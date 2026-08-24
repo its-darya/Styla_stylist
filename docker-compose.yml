@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: styla_db
+    restart: always
+    environment:
+      POSTGRES_USER: styla_user
+      POSTGRES_PASSWORD: styla_password
+      POSTGRES_DB: styla_wardrobe
+    ports:
+      - "5432:5432"
+    volumes:
+      - styla_db_data:/var/lib/postgresql/data
+
+volumes:
+  styla_db_data:
