@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment
+.env
+
+# Model weights & artifacts
+*.pt
+*.pth
+*.npy
+
+# Data
+data/raw/
+data/images/
+
+# Module outputs
+ml/retrieval/outputs/
+
+# Tooling
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Model weights cache
+.cache/
+
+# AI köməkçisi üçün lokal qaydalar (repoya getmir)
+CLAUDE.md
