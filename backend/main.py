@@ -92,6 +92,21 @@ async def get_wardrobe_items():
         })
     return items
 
+@app.delete("/api/wardrobe/{item_id}")
+async def delete_wardrobe_item(item_id: str):
+    if not store:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    try:
+        store.delete(item_id)
+        # Faylı da diskdən silirik
+        img_path = data_dir / "images" / f"{item_id}.png"
+        if img_path.exists():
+            img_path.unlink()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 class UploadResponse(BaseModel):
     id: str
     filename: str

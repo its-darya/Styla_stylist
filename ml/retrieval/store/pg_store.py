@@ -209,6 +209,11 @@ class PgStore(VectorStore):
             },
         )
 
+    def delete(self, item_id: str) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(f"DELETE FROM {self.table} WHERE item_id = %s", (item_id,))
+        self.conn.commit()
+
     # --- əlavə ------------------------------------------------------------
     def distinct_values(self, field: str) -> list[str]:
         if field not in FILTERABLE_COLUMNS:

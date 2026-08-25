@@ -97,7 +97,6 @@ export async function analyzeGarmentPhoto(file: File): Promise<WardrobeItem> {
   else if (["jacket", "coat"].includes(cat)) mappedCategory = "outerwear";
   else if (["shoes", "boots"].includes(cat)) mappedCategory = "shoes";
   else if (["bag", "hat", "scarf", "sunglasses", "watch", "belt"].includes(cat)) mappedCategory = "top"; // Accessories fallback
-  
   return {
     id: data.id,
     imageUrl: `http://localhost:8000${data.filename}`,
@@ -106,6 +105,15 @@ export async function analyzeGarmentPhoto(file: File): Promise<WardrobeItem> {
     pattern: data.pattern || "Solid",
     dateAdded: new Date().toISOString(),
   };
+}
+
+export async function deleteWardrobeItem(id: string): Promise<void> {
+  const response = await fetch(`http://localhost:8000/api/wardrobe/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Delete failed: ${response.statusText}`);
+  }
 }
 
 const sample = <T,>(arr: T[], n: number) =>

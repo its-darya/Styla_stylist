@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { getWardrobeItems } from "./mock-api";
+import { getWardrobeItems, deleteWardrobeItem } from "./mock-api";
 import type { Outfit, WardrobeItem } from "./types";
 
 interface StylaState {
@@ -33,7 +33,10 @@ export function StylaProvider({ children }: { children: ReactNode }) {
 
   const addItem = useCallback((item: WardrobeItem) => setWardrobe((w) => [item, ...w]), []);
   const removeItem = useCallback(
-    (id: string) => setWardrobe((w) => w.filter((i) => i.id !== id)),
+    (id: string) => {
+      setWardrobe((w) => w.filter((i) => i.id !== id));
+      deleteWardrobeItem(id).catch(console.error);
+    },
     [],
   );
   const saveLook = useCallback(
