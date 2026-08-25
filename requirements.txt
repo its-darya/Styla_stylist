@@ -1,0 +1,23 @@
+# Styla — ml/retrieval (Rol C: Representation & Retrieval)
+#
+# torch/torchvision MÜTLƏQ CPU wheel index-indən qurulmalıdır:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
+torch>=2.2
+torchvision>=0.17
+
+# Model & data
+transformers>=4.40
+huggingface_hub>=0.23
+datasets>=2.19
+pillow>=10.0
+numpy>=1.26
+
+# Vector store (pgvector backend)
+psycopg[binary]>=3.1
+pgvector>=0.2.5
+
+# Utilities
+python-dotenv>=1.0
+tqdm>=4.66
+matplotlib>=3.8
