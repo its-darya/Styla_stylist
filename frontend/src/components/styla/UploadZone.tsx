@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,18 @@ interface Props {
 export function UploadZone({ title, subtitle, onFile, disabled, className }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
+
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      if (disabled) return;
+      const file = e.clipboardData?.files?.[0];
+      if (file && file.type.startsWith("image/")) {
+        onFile(file);
+      }
+    }
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [disabled, onFile]);
 
   return (
     <div

@@ -113,6 +113,50 @@ class CategoryClassifier:
         best = int(np.argmax(probabilities))
         return self.categories[best], float(probabilities[best])
 
+class ColorClassifier:
+    """Zero-shot rəng təsnifatı — CLIP mətn promptları ilə."""
+
+    COLORS = [
+        "black", "white", "gray", "red", "blue", "green", "yellow", 
+        "orange", "purple", "pink", "brown", "beige", "navy", "maroon",
+        "black & white", "navy & white", "blue & white", "red & white",
+        "multi-color"
+    ]
+
+    def __init__(self, embedder) -> None:
+        self.colors = self.COLORS
+        # Prompt for color
+        prompts = [f"a photo of a {c} clothing item" for c in self.colors]
+        self._prompt_vectors = embedder.embed_texts(prompts)
+        self._embedder = embedder
+
+    def classify_vector(self, vector: np.ndarray) -> tuple[str, float]:
+        scores = self._prompt_vectors @ np.asarray(vector, dtype=np.float32).reshape(-1)
+        logits = scores.astype(np.float64) * config.CATEGORY_LOGIT_SCALE
+        probabilities = np.exp(logits - logits.max())
+        probabilities /= probabilities.sum()
+        best = int(np.argmax(probabilities))
+        return self.colors[best], float(probabilities[best])
+
+class PatternClassifier:
+    """Zero-shot naxış (pattern) təsnifatı — CLIP mətn promptları ilə."""
+
+    PATTERNS = ["Solid", "Ribbed", "Pinstripe", "Check", "Textured", "Floral", "Polka Dot", "Striped"]
+
+    def __init__(self, embedder) -> None:
+        self.patterns = self.PATTERNS
+        prompts = [f"a photo of a {p.lower()} clothing item" for p in self.patterns]
+        self._prompt_vectors = embedder.embed_texts(prompts)
+        self._embedder = embedder
+
+    def classify_vector(self, vector: np.ndarray) -> tuple[str, float]:
+        scores = self._prompt_vectors @ np.asarray(vector, dtype=np.float32).reshape(-1)
+        logits = scores.astype(np.float64) * config.CATEGORY_LOGIT_SCALE
+        probabilities = np.exp(logits - logits.max())
+        probabilities /= probabilities.sum()
+        best = int(np.argmax(probabilities))
+        return self.patterns[best], float(probabilities[best])
+
     def map_labels(self, labels: Sequence[str]) -> dict[str, str]:
         """Qarderob kateqoriya adlarını kobud kateqoriyalara xəritələyir.
 

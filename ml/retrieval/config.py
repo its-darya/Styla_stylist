@@ -35,7 +35,7 @@ NUM_THREADS = int(os.getenv("STYLA_NUM_THREADS", "4"))
 # --- Vector store ---------------------------------------------------------
 BACKEND = os.getenv("STYLA_BACKEND", "numpy")  # "numpy" | "pg"
 DB_URL = os.getenv(
-    "STYLA_DB_URL", "postgresql://styla:styla@localhost:5432/styla"
+    "STYLA_DB_URL", "postgresql://styla_user:styla_password@localhost:5440/styla_wardrobe"
 )
 EMB_TABLE = "item_embeddings"
 BUILD_ANN_INDEX = False  # exact search kifayətdir — pgvector index qurulmur

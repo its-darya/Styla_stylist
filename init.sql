@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS item_embeddings (
     image_path  TEXT,
     category    TEXT,
     color       TEXT,
+    pattern     TEXT,
     embedding   VECTOR(512),
     model_ver   TEXT DEFAULT 'fashionclip-v1',
     source      TEXT,

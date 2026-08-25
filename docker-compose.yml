@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   db:
@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: styla_password
       POSTGRES_DB: styla_wardrobe
     ports:
-      - "5432:5432"
+      - "5440:5432"
     volumes:
       - styla_db_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro

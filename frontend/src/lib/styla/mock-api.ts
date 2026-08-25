@@ -44,24 +44,66 @@ const CATALOG: Omit<WardrobeItem, "id" | "dateAdded">[] = [
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
 
 export async function getWardrobeItems(): Promise<WardrobeItem[]> {
-  await delay(700);
-  return CATALOG.map((c, i) => ({
-    ...c,
-    id: `seed_${i}`,
-    dateAdded: daysAgo(i + 1),
-  }));
+  try {
+    const response = await fetch("http://localhost:8000/api/wardrobe", { cache: "no-store" });
+    if (!response.ok) return [];
+    
+    const items = await response.json();
+    return items.map((data: any) => {
+      // Map specific backend categories to broad frontend categories
+      const cat = (data.category || "top").toLowerCase();
+      let mappedCategory: Category = "top";
+      if (["pants", "jeans", "shorts", "skirt"].includes(cat)) mappedCategory = "bottom";
+      else if (["dress"].includes(cat)) mappedCategory = "dress";
+      else if (["jacket", "coat"].includes(cat)) mappedCategory = "outerwear";
+      else if (["shoes", "boots"].includes(cat)) mappedCategory = "shoes";
+      
+      return {
+        id: data.id,
+        imageUrl: data.imageUrl,
+        category: mappedCategory,
+        color: data.color || "Unknown",
+        pattern: data.pattern || "Solid",
+        dateAdded: data.dateAdded || new Date().toISOString(),
+      };
+    });
+  } catch (error) {
+    console.error("Failed to fetch wardrobe", error);
+    return [];
+  }
 }
 
-/** Mock "segmentation + classification" of an uploaded garment photo. */
+/** Connect to real FastAPI backend for garment analysis */
 export async function analyzeGarmentPhoto(file: File): Promise<WardrobeItem> {
-  await delay(2400);
-  const pick = CATALOG[Math.floor(Math.random() * CATALOG.length)]!;
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  const response = await fetch("http://localhost:8000/api/wardrobe/upload", {
+    method: "POST",
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.statusText}`);
+  }
+  
+  const data = await response.json();
+  
+  // Map specific backend categories to broad frontend categories
+  const cat = data.category.toLowerCase();
+  let mappedCategory: Category = "top";
+  if (["pants", "jeans", "shorts", "skirt"].includes(cat)) mappedCategory = "bottom";
+  else if (["dress"].includes(cat)) mappedCategory = "dress";
+  else if (["jacket", "coat"].includes(cat)) mappedCategory = "outerwear";
+  else if (["shoes", "boots"].includes(cat)) mappedCategory = "shoes";
+  else if (["bag", "hat", "scarf", "sunglasses", "watch", "belt"].includes(cat)) mappedCategory = "top"; // Accessories fallback
+  
   return {
-    id: uid(),
-    imageUrl: URL.createObjectURL(file),
-    category: pick.category,
-    color: COLORS[Math.floor(Math.random() * COLORS.length)]!,
-    pattern: PATTERNS[Math.floor(Math.random() * PATTERNS.length)]!,
+    id: data.id,
+    imageUrl: `http://localhost:8000${data.filename}`,
+    category: mappedCategory,
+    color: data.color,
+    pattern: data.pattern || "Solid",
     dateAdded: new Date().toISOString(),
   };
 }

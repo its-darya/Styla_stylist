@@ -33,9 +33,9 @@ from ml.retrieval.store.base import (
 )
 
 # meta dict-in hansı açarları hansı sütuna düşür
-META_COLUMNS = ("image_path", "category", "color", "model_ver", "source")
+META_COLUMNS = ("image_path", "category", "color", "pattern", "model_ver", "source")
 # WHERE filtrində icazə verilən sütunlar (SQL injection-a qarşı ağ siyahı)
-FILTERABLE_COLUMNS = ("category", "color", "source", "model_ver")
+FILTERABLE_COLUMNS = ("category", "color", "pattern", "source", "model_ver")
 
 
 class PgStore(VectorStore):
@@ -68,6 +68,7 @@ class PgStore(VectorStore):
                     image_path  TEXT,
                     category    TEXT,
                     color       TEXT,
+                    pattern     TEXT,
                     embedding   VECTOR({config.EMB_DIM}),
                     model_ver   TEXT DEFAULT '{config.MODEL_VER}',
                     source      TEXT,
@@ -101,6 +102,7 @@ class PgStore(VectorStore):
                 item_meta.get("image_path"),
                 item_meta.get("category"),
                 item_meta.get("color"),
+                item_meta.get("pattern"),
                 vec,
                 item_meta.get("model_ver") or config.MODEL_VER,
                 item_meta.get("source"),
@@ -111,12 +113,13 @@ class PgStore(VectorStore):
             cur.executemany(
                 f"""
                 INSERT INTO {self.table}
-                    (item_id, image_path, category, color, embedding, model_ver, source)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (item_id, image_path, category, color, pattern, embedding, model_ver, source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (item_id) DO UPDATE SET
                     image_path = EXCLUDED.image_path,
                     category   = EXCLUDED.category,
                     color      = EXCLUDED.color,
+                    pattern    = EXCLUDED.pattern,
                     embedding  = EXCLUDED.embedding,
                     model_ver  = EXCLUDED.model_ver,
                     source     = EXCLUDED.source
@@ -152,7 +155,7 @@ class PgStore(VectorStore):
                 f"""
                 SELECT item_id,
                        1 - (embedding <=> %s) AS similarity,
-                       image_path, category, color, model_ver, source
+                       image_path, category, color, pattern, model_ver, source
                 FROM {self.table}
                 {where_sql}
                 ORDER BY embedding <=> %s
@@ -170,8 +173,9 @@ class PgStore(VectorStore):
                     "image_path": row[2],
                     "category": row[3],
                     "color": row[4],
-                    "model_ver": row[5],
-                    "source": row[6],
+                    "pattern": row[5],
+                    "model_ver": row[6],
+                    "source": row[7],
                 },
             )
             for row in rows
@@ -185,7 +189,7 @@ class PgStore(VectorStore):
     def get(self, item_id: str) -> SearchResult | None:
         with self.conn.cursor() as cur:
             cur.execute(
-                f"""SELECT item_id, image_path, category, color, model_ver, source
+                f"""SELECT item_id, image_path, category, color, pattern, model_ver, source
                     FROM {self.table} WHERE item_id = %s""",
                 (item_id,),
             )
@@ -199,8 +203,9 @@ class PgStore(VectorStore):
                 "image_path": row[1],
                 "category": row[2],
                 "color": row[3],
-                "model_ver": row[4],
-                "source": row[5],
+                "pattern": row[4],
+                "model_ver": row[5],
+                "source": row[6],
             },
         )
 

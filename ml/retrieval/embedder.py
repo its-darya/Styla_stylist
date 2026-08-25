@@ -157,7 +157,7 @@ class FashionCLIPEmbedder:
 
         chunks = []
         for batch in _batched(images, self.batch_size):
-            prepared = [im.convert("RGB") for im in batch]
+            prepared = [self._composite_over_white(im) for im in batch]
             inputs = self._processor(images=prepared, return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             with torch.inference_mode():
@@ -167,8 +167,18 @@ class FashionCLIPEmbedder:
 
     # --- helpers ----------------------------------------------------------
     @staticmethod
+    def _composite_over_white(img: Image.Image) -> Image.Image:
+        if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+            img = img.convert('RGBA')
+            bg = Image.new("RGB", img.size, (255, 255, 255))
+            bg.paste(img, mask=img.split()[3])
+            return bg
+        return img.convert("RGB")
+
+    @staticmethod
     def _load_image(path: str | Path) -> Image.Image:
-        return Image.open(path).convert("RGB")
+        img = Image.open(path)
+        return FashionCLIPEmbedder._composite_over_white(img)
 
 
 def main() -> int:
