@@ -7,6 +7,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional, List
+import itertools
+import numpy as np
+from fastapi import Form
+from ml.compatibility.scorer import get_scorer as get_compat_scorer
+from ml.retrieval.style_scorer import StyleScorer
+from ml.retrieval.personal_style import PersonalStyle
+from ml.compatibility.rules import pattern_clash
+import torch
+
 
 from fastapi.staticfiles import StaticFiles
 
@@ -25,10 +35,13 @@ classifier = None
 color_classifier = None
 pattern_classifier = None
 store = None
+compat_scorer = None
+style_scorer = None
+personal_style = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global embedder, classifier, color_classifier, pattern_classifier, store
+    global embedder, classifier, color_classifier, pattern_classifier, store, compat_scorer, style_scorer, personal_style
     print("Initializing ML models...")
     embedder = FashionCLIPEmbedder()
     # Yükləməni tezləşdirmək üçün ilk dəfədən yükləyirik
@@ -39,6 +52,9 @@ async def lifespan(app: FastAPI):
     
     print("Connecting to Vector Store (PgStore)...")
     store = PgStore(ensure_schema=True)
+    compat_scorer = get_compat_scorer(device='cpu')
+    style_scorer = StyleScorer(embedder=embedder)
+    personal_style = PersonalStyle(db_url=store.db_url)
     yield
     print("Shutting down Vector Store connection...")
     if store:
@@ -167,5 +183,114 @@ async def upload_wardrobe_item(file: UploadFile = File(...)):
         )
     finally:
         # Təmizlik (orijinal şəkli silirik, ancaq şəffafı DB üçün saxlayırıq)
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+class GenerateRequest(BaseModel):
+    style: str
+    user_id: Optional[str] = "default_user"
+
+@app.post("/api/generate")
+async def generate_outfits(req: GenerateRequest):
+    if not store or not compat_scorer or not style_scorer:
+        raise HTTPException(status_code=500, detail="Models not initialized")
+    
+    with store.conn.cursor() as cur:
+        cur.execute("SELECT item_id, image_path, category, color, pattern, embedding FROM item_embeddings")
+        rows = cur.fetchall()
+        
+    items = []
+    for row in rows:
+        items.append({
+            "id": row[0],
+            "imageUrl": f"http://localhost:8000{row[1]}",
+            "category": row[2],
+            "color": row[3],
+            "pattern": row[4] or "Solid",
+            "embedding": np.array(row[5][1:-1].split(","), dtype=np.float32) if isinstance(row[5], str) else np.array(row[5], dtype=np.float32)
+        })
+        
+    tops = [i for i in items if i["category"] == "top"]
+    bottoms = [i for i in items if i["category"] == "bottom"]
+    shoes = [i for i in items if i["category"] == "shoes"]
+    
+    combinations = list(itertools.product(tops, bottoms, shoes))
+    if not combinations:
+        return []
+        
+    all_embs = np.array([i["embedding"] for i in items])
+    if len(all_embs) > 0:
+        style_res = style_scorer.score_styles(all_embs)
+        styles_list = style_res["styles"]
+        if req.style in styles_list:
+            style_idx = styles_list.index(req.style)
+            item_style_scores = {i["id"]: float(style_res["probs"][idx][style_idx]) for idx, i in enumerate(items)}
+        else:
+            item_style_scores = {i["id"]: 0.0 for i in items}
+    else:
+        item_style_scores = {}
+
+    item_personal_scores = {}
+    if req.user_id and personal_style:
+        if personal_style.count(req.user_id) > 0:
+            refs = personal_style.get_refs(req.user_id)
+            if refs.shape[0] > 0:
+                for i in items:
+                    item_personal_scores[i["id"]] = float(personal_style.personal_score(i["embedding"], refs))
+                    
+    top_embs = [c[0]["embedding"] for c in combinations]
+    bot_embs = [c[1]["embedding"] for c in combinations]
+        
+    if top_embs:
+        with torch.no_grad():
+            compat_scores = compat_scorer.score_batch(np.array(top_embs), np.array(bot_embs)).tolist()
+    else:
+        compat_scores = []
+        
+    results = []
+    for idx, (top, bot, shoe) in enumerate(combinations):
+        c_score = compat_scores[idx] if idx < len(compat_scores) else 0.0
+        s_score = (item_style_scores.get(top["id"], 0) + item_style_scores.get(bot["id"], 0) + item_style_scores.get(shoe["id"], 0)) / 3.0
+        
+        p_score = 0.0
+        if item_personal_scores:
+            p_score = max([item_personal_scores.get(top["id"], 0), item_personal_scores.get(bot["id"], 0), item_personal_scores.get(shoe["id"], 0)])
+            
+        total_score = c_score * 0.4 + s_score * 0.4 + p_score * 0.2
+        
+        patterns = [top["pattern"], bot["pattern"], shoe["pattern"]]
+        if pattern_clash(patterns):
+            total_score -= 0.2
+            
+        results.append({
+            "outfit": [
+                {"id": top["id"], "imageUrl": top["imageUrl"], "category": top["category"]},
+                {"id": bot["id"], "imageUrl": bot["imageUrl"], "category": bot["category"]},
+                {"id": shoe["id"], "imageUrl": shoe["imageUrl"], "category": shoe["category"]}
+            ],
+            "score": total_score
+        })
+        
+    results.sort(key=lambda x: x["score"], reverse=True)
+    top_5 = results[:5]
+    
+    return [{"id": str(uuid.uuid4()), "items": r["outfit"]} for r in top_5]
+
+@app.post("/api/style/personal/upload")
+async def upload_personal_style(file: UploadFile = File(...), user_id: str = Form("default_user")):
+    if not embedder or not personal_style:
+        raise HTTPException(status_code=500, detail="Models not initialized")
+    
+    tmp_dir = BASE_DIR / "tmp" / "refs"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"{uuid.uuid4()}_{file.filename}"
+    
+    with open(tmp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    try:
+        personal_style.add_style_refs(user_id, [tmp_path])
+        return {"success": True}
+    finally:
         if tmp_path.exists():
             tmp_path.unlink()
