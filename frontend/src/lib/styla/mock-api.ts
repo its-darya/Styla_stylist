@@ -140,50 +140,39 @@ export async function generateOutfit(style: StyleId, wardrobe: WardrobeItem[], u
     
     const data = await response.json();
     if (!data || data.length === 0) {
-       return {
-         id: `of_${Date.now().toString(36)}`,
-         style,
-         items: [],
-         createdAt: new Date().toISOString(),
-       };
+      return [];
     }
     
-    // Pick a random result from the top 5 so "regenerate" gives variety
-    const topResult = data[Math.floor(Math.random() * data.length)];
-    
-    // Map items back to frontend types
-    const mappedItems = topResult.items.map((item: any) => {
-      let mappedCategory: Category = "top";
-      const cat = (item.category || "top").toLowerCase();
-      if (["pants", "jeans", "shorts", "skirt"].includes(cat)) mappedCategory = "bottom";
-      else if (["dress"].includes(cat)) mappedCategory = "dress";
-      else if (["jacket", "coat"].includes(cat)) mappedCategory = "outerwear";
-      else if (["shoes", "boots"].includes(cat)) mappedCategory = "shoes";
-      
+    // Return all results mapped to frontend types
+    return data.map((result: any, i: number) => {
+      const mappedItems = result.items.map((item: any) => {
+        let mappedCategory: Category = "top";
+        const cat = (item.category || "top").toLowerCase();
+        if (["pants", "jeans", "shorts", "skirt"].includes(cat)) mappedCategory = "bottom";
+        else if (["dress"].includes(cat)) mappedCategory = "dress";
+        else if (["jacket", "coat"].includes(cat)) mappedCategory = "outerwear";
+        else if (["shoes", "boots"].includes(cat)) mappedCategory = "shoes";
+        
+        return {
+          id: item.id,
+          imageUrl: item.imageUrl,
+          category: mappedCategory,
+          color: item.color || "Unknown",
+          pattern: item.pattern || "Solid",
+          dateAdded: new Date().toISOString(),
+        };
+      });
+
       return {
-        id: item.id,
-        imageUrl: item.imageUrl,
-        category: mappedCategory,
-        color: item.color || "Unknown",
-        pattern: item.pattern || "Solid",
-        dateAdded: new Date().toISOString(),
+        id: result.id || `of_${Date.now().toString(36)}_${i}`,
+        style,
+        items: mappedItems,
+        createdAt: new Date().toISOString(),
       };
     });
-
-    return {
-      id: topResult.id || `of_${Date.now().toString(36)}`,
-      style,
-      items: mappedItems,
-      createdAt: new Date().toISOString(),
-    };
   } catch (err) {
     console.error("Failed to generate outfit", err);
-    return {
-      id: `of_${Date.now().toString(36)}`,
-      style,
-      items: [],
-      createdAt: new Date().toISOString(),
-    };
+    return [];
   }
 }
 
