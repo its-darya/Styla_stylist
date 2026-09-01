@@ -173,7 +173,7 @@ function GeneratePage() {
         />
       )}
 
-      {outfit && !loading && <OutfitCard outfit={currentOutfit} />}
+      {currentOutfit && !loading && <OutfitCard outfit={currentOutfit} />}
 
       {!currentOutfit && !loading && (
         <div className="glass rounded-3xl px-6 py-16 text-center">
