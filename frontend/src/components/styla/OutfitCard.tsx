@@ -18,18 +18,24 @@ export function OutfitCard({ outfit, action }: { outfit: Outfit; action?: React.
         </div>
         {action}
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {outfit.items.map((item) => (
-          <figure key={item.id} className="overflow-hidden rounded-2xl bg-muted">
+      <div className="flex flex-col items-center justify-center -space-y-8 py-8 bg-white/50 rounded-2xl">
+        {[...outfit.items]
+          .sort((a, b) => {
+            const order: Record<string, number> = {
+              hat: 1, sunglasses: 2, scarf: 3, coat: 4, jacket: 5, sweater: 6,
+              shirt: 7, 't-shirt': 8, dress: 9, belt: 10, pants: 11, jeans: 12,
+              skirt: 13, shorts: 14, bag: 15, shoes: 16, boots: 17
+            };
+            return (order[a.category] || 99) - (order[b.category] || 99);
+          })
+          .map((item, i) => (
+          <figure key={item.id} className="relative z-10 w-48 transition-transform hover:scale-110 hover:z-20" style={{ zIndex: 10 - i }}>
             <img
               src={item.imageUrl}
               alt={categoryLabel(item.category)}
               loading="lazy"
-              className="aspect-[3/4] w-full object-cover"
+              className="w-full object-contain drop-shadow-xl mix-blend-multiply"
             />
-            <figcaption className="bg-surface-veil px-2 py-1.5 text-[11px] text-muted-foreground">
-              {categoryLabel(item.category)} · {item.color}
-            </figcaption>
           </figure>
         ))}
       </div>

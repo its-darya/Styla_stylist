@@ -4,6 +4,7 @@ import { Bookmark, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { OutfitCard } from "@/components/styla/OutfitCard";
 import { AnalyzingCard } from "@/components/styla/Analyzing";
@@ -83,26 +84,7 @@ function GeneratePage() {
         </p>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {STYLES.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setStyle(s.id)}
-            className={cn(
-              "glass rounded-2xl p-3 text-left transition-all hover:-translate-y-0.5",
-              style === s.id && "border-primary ring-2 ring-ring",
-            )}
-          >
-            <span
-              className="mb-2 block size-6 rounded-full"
-              style={{ backgroundColor: s.tint }}
-              aria-hidden
-            />
-            <span className="block text-sm font-medium">{s.label}</span>
-            <span className="block text-[11px] text-muted-foreground">{s.hint}</span>
-          </button>
-        ))}
-      </div>
+
 
       <div className="flex flex-wrap gap-3">
         <div className="flex items-center space-x-2 w-full mb-2">
@@ -128,10 +110,28 @@ function GeneratePage() {
           </div>
         )}
 
-        <Button onClick={run} disabled={loading} className="rounded-full px-6">
-          <Sparkles className="size-4" />
-          {loading ? "Stylingâ€¦" : "Generate outfit"}
-        </Button>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <Select value={style} onValueChange={(v) => setStyle(v as StyleId)}>
+            <SelectTrigger className="w-[180px] rounded-full glass border-primary/20 bg-background/50">
+              <SelectValue placeholder="Select style" />
+            </SelectTrigger>
+            <SelectContent>
+              {STYLES.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  <div className="flex items-center">
+                    <span className="mr-2 inline-block size-3 rounded-full" style={{ backgroundColor: s.tint }} />
+                    {s.label}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button onClick={run} disabled={loading} className="rounded-full px-6">
+            <Sparkles className="size-4" />
+            {loading ? "Stylingâ€¦" : "Generate outfit"}
+          </Button>
+        </div>
         {outfit && (
           <>
             <Button variant="outline" className="rounded-full" onClick={run} disabled={loading}>
