@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
     
     print("Connecting to Vector Store (PgStore)...")
     store = PgStore(ensure_schema=True)
-    compat_scorer = get_compat_scorer(device='cpu')
+    compat_scorer = get_compat_scorer()
     style_scorer = StyleScorer(embedder=embedder)
     personal_style = PersonalStyle(db_url=store.db_url)
     yield
