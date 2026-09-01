@@ -1,4 +1,4 @@
-﻿import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Bookmark, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -69,14 +69,6 @@ function GeneratePage() {
   function handleFile(file: File) {
     setReferenceFile(file);
     setPreview(URL.createObjectURL(file));
-  }
-    setLoading(true);
-    setOutfit(null);
-    try {
-      setOutfit(await generateOutfit(style, wardrobe));
-    } finally {
-      setLoading(false);
-    }
   }
 
   const saved = outfit ? savedLooks.some((o) => o.id === outfit.id) : false;
