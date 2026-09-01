@@ -210,15 +210,24 @@ async def generate_outfits(req: GenerateRequest):
             "embedding": np.array(row[5][1:-1].split(","), dtype=np.float32) if isinstance(row[5], str) else (row[5].to_numpy() if hasattr(row[5], 'to_numpy') else np.array(row[5], dtype=np.float32))
         })
         
-    tops = [i for i in items if i["category"] == "top"]
-    bottoms = [i for i in items if i["category"] == "bottom"]
+    from ml.retrieval.config import OUTFIT_SLOTS
+    tops = [i for i in items if i["category"] in OUTFIT_SLOTS["top"] and i["category"] != "dress"]
+    bottoms = [i for i in items if i["category"] in OUTFIT_SLOTS["bottom"]]
     dresses = [i for i in items if i["category"] == "dress"]
+    shoes = [i for i in items if i["category"] in OUTFIT_SLOTS["shoes"]]
     
     combinations = []
     if tops and bottoms:
-        combinations.extend(list(itertools.product(tops, bottoms)))
+        if shoes:
+            combinations.extend(list(itertools.product(tops, bottoms, shoes)))
+        else:
+            combinations.extend(list(itertools.product(tops, bottoms)))
+    
     if dresses:
-        combinations.extend([(d,) for d in dresses])
+        if shoes:
+            combinations.extend(list(itertools.product(dresses, shoes)))
+        else:
+            combinations.extend([(d,) for d in dresses])
 
     if not combinations:
         return []
@@ -247,10 +256,21 @@ async def generate_outfits(req: GenerateRequest):
     bot_embs = []
     valid_comb_indices = []
     for idx, c in enumerate(combinations):
-        if len(c) >= 2:
+        # Determine top and bottom for compatibility scoring
+        if len(c) == 3:
+            # (top, bottom, shoes) - we score top and bottom
             top_embs.append(c[0]["embedding"])
             bot_embs.append(c[1]["embedding"])
             valid_comb_indices.append(idx)
+        elif len(c) == 2:
+            if c[0]["category"] == "dress":
+                # (dress, shoes) - no top/bottom compat score
+                pass
+            else:
+                # (top, bottom)
+                top_embs.append(c[0]["embedding"])
+                bot_embs.append(c[1]["embedding"])
+                valid_comb_indices.append(idx)
         
     compat_scores = [0.0] * len(combinations)
     if top_embs:
