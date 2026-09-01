@@ -151,6 +151,7 @@ styla/
 │   ├── data/           # dataset download/cleaning scripts
 │   ├── vision/         # segmentation, attribute model
 │   ├── compatibility/  # compatibility model, scorer
+│   ├── style/          # ensemble-level style classifier
 │   ├── retrieval/       # embedding, pgvector integration
 │   └── evaluate.py     # metrics: accuracy, F1, AUC, FITB, Recall@k
 ├── data/
