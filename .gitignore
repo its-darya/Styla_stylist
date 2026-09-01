@@ -96,3 +96,6 @@ temp/
 
 # AI köməkçisi üçün lokal qaydalar (repoya getmir)
 CLAUDE.md
+
+# Stil embedding keşi (style_prompts.py generasiya edir)
+data/cache/
