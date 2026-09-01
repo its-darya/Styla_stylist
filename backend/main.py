@@ -283,8 +283,8 @@ async def generate_outfits(req: GenerateRequest):
     for idx, c in enumerate(combinations):
         c_score = compat_scores[idx]
         
-        # Style score average
-        s_score = sum(item_style_scores.get(item["id"], 0) for item in c) / len(c)
+        # Style score based on the WEAKEST link (min) instead of average
+        s_score = min(item_style_scores.get(item["id"], 0) for item in c)
         
         p_score = 0.0
         if item_personal_scores:
