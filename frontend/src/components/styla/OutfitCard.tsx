@@ -22,9 +22,10 @@ export function OutfitCard({ outfit, action }: { outfit: Outfit; action?: React.
         {[...outfit.items]
           .sort((a, b) => {
             const order: Record<string, number> = {
-              hat: 1, sunglasses: 2, scarf: 3, coat: 4, jacket: 5, sweater: 6,
-              shirt: 7, 't-shirt': 8, dress: 9, belt: 10, pants: 11, jeans: 12,
-              skirt: 13, shorts: 14, bag: 15, shoes: 16, boots: 17
+              hat: 1, sunglasses: 2, scarf: 3, outerwear: 4, coat: 4, jacket: 5, 
+              top: 7, sweater: 6, shirt: 7, 't-shirt': 8, dress: 9, 
+              belt: 10, bottom: 12, pants: 11, jeans: 12, skirt: 13, shorts: 14, 
+              bag: 15, shoes: 16, boots: 17
             };
             return (order[a.category] || 99) - (order[b.category] || 99);
           })

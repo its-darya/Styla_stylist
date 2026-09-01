@@ -290,7 +290,8 @@ async def generate_outfits(req: GenerateRequest):
         if item_personal_scores:
             p_score = max([item_personal_scores.get(item["id"], 0) for item in c] + [0.0])
             
-        total_score = c_score * 0.4 + s_score * 0.4 + p_score * 0.2
+        # Boost style score weight to ensure outfits match the selected style closely
+        total_score = c_score * 0.3 + s_score * 0.5 + p_score * 0.2
         
         patterns = [item["pattern"] for item in c]
         if pattern_clash(patterns):

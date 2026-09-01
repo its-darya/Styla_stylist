@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Isolated mock data layer.
  *
  * Every function here simulates a network round-trip and returns mock data.
@@ -148,8 +148,8 @@ export async function generateOutfit(style: StyleId, wardrobe: WardrobeItem[], u
        };
     }
     
-    // Pick the top 1 result (the API returns top 5)
-    const topResult = data[0];
+    // Pick a random result from the top 5 so "regenerate" gives variety
+    const topResult = data[Math.floor(Math.random() * data.length)];
     
     // Map items back to frontend types
     const mappedItems = topResult.items.map((item: any) => {
