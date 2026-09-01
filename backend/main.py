@@ -207,14 +207,19 @@ async def generate_outfits(req: GenerateRequest):
             "category": row[2],
             "color": row[3],
             "pattern": row[4] or "Solid",
-            "embedding": np.array(row[5][1:-1].split(","), dtype=np.float32) if isinstance(row[5], str) else np.array(row[5], dtype=np.float32)
+            "embedding": np.array(row[5][1:-1].split(","), dtype=np.float32) if isinstance(row[5], str) else (row[5].to_numpy() if hasattr(row[5], 'to_numpy') else np.array(row[5], dtype=np.float32))
         })
         
     tops = [i for i in items if i["category"] == "top"]
     bottoms = [i for i in items if i["category"] == "bottom"]
-    shoes = [i for i in items if i["category"] == "shoes"]
+    dresses = [i for i in items if i["category"] == "dress"]
     
-    combinations = list(itertools.product(tops, bottoms, shoes))
+    combinations = []
+    if tops and bottoms:
+        combinations.extend(list(itertools.product(tops, bottoms)))
+    if dresses:
+        combinations.extend([(d,) for d in dresses])
+
     if not combinations:
         return []
         
@@ -238,36 +243,42 @@ async def generate_outfits(req: GenerateRequest):
                 for i in items:
                     item_personal_scores[i["id"]] = float(personal_style.personal_score(i["embedding"], refs))
                     
-    top_embs = [c[0]["embedding"] for c in combinations]
-    bot_embs = [c[1]["embedding"] for c in combinations]
+    top_embs = []
+    bot_embs = []
+    valid_comb_indices = []
+    for idx, c in enumerate(combinations):
+        if len(c) >= 2:
+            top_embs.append(c[0]["embedding"])
+            bot_embs.append(c[1]["embedding"])
+            valid_comb_indices.append(idx)
         
+    compat_scores = [0.0] * len(combinations)
     if top_embs:
         with torch.no_grad():
-            compat_scores = compat_scorer.score_batch(np.array(top_embs), np.array(bot_embs)).tolist()
-    else:
-        compat_scores = []
+            c_scores = compat_scorer.score_batch(np.array(top_embs), np.array(bot_embs)).tolist()
+            for i, idx in enumerate(valid_comb_indices):
+                compat_scores[idx] = c_scores[i]
         
     results = []
-    for idx, (top, bot, shoe) in enumerate(combinations):
-        c_score = compat_scores[idx] if idx < len(compat_scores) else 0.0
-        s_score = (item_style_scores.get(top["id"], 0) + item_style_scores.get(bot["id"], 0) + item_style_scores.get(shoe["id"], 0)) / 3.0
+    for idx, c in enumerate(combinations):
+        c_score = compat_scores[idx]
+        
+        # Style score average
+        s_score = sum(item_style_scores.get(item["id"], 0) for item in c) / len(c)
         
         p_score = 0.0
         if item_personal_scores:
-            p_score = max([item_personal_scores.get(top["id"], 0), item_personal_scores.get(bot["id"], 0), item_personal_scores.get(shoe["id"], 0)])
+            p_score = max([item_personal_scores.get(item["id"], 0) for item in c] + [0.0])
             
         total_score = c_score * 0.4 + s_score * 0.4 + p_score * 0.2
         
-        patterns = [top["pattern"], bot["pattern"], shoe["pattern"]]
+        patterns = [item["pattern"] for item in c]
         if pattern_clash(patterns):
             total_score -= 0.2
             
+        outfit_items = [{"id": item["id"], "imageUrl": item["imageUrl"], "category": item["category"]} for item in c]
         results.append({
-            "outfit": [
-                {"id": top["id"], "imageUrl": top["imageUrl"], "category": top["category"]},
-                {"id": bot["id"], "imageUrl": bot["imageUrl"], "category": bot["category"]},
-                {"id": shoe["id"], "imageUrl": shoe["imageUrl"], "category": shoe["category"]}
-            ],
+            "outfit": outfit_items,
             "score": total_score
         })
         
