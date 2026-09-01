@@ -1,24 +1,27 @@
-import { createFileRoute } from "@tanstack/react-router";
+﻿import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Bookmark, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { OutfitCard } from "@/components/styla/OutfitCard";
 import { AnalyzingCard } from "@/components/styla/Analyzing";
+import { UploadZone } from "@/components/styla/UploadZone";
 import { useStyla } from "@/lib/styla/store";
-import { generateOutfit } from "@/lib/styla/mock-api";
+import { generateOutfit, uploadPersonalStyleRef } from "@/lib/styla/mock-api";
 import { STYLES, type Outfit, type StyleId } from "@/lib/styla/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/generate")({
   head: () => ({
     meta: [
-      { title: "Generate Outfits — Styla" },
+      { title: "Generate Outfits â€” Styla" },
       {
         name: "description",
         content: "Pick a style and let Styla combine pieces from your own wardrobe into a look.",
       },
-      { property: "og:title", content: "Generate Outfits — Styla" },
+      { property: "og:title", content: "Generate Outfits â€” Styla" },
       {
         property: "og:description",
         content: "Casual to evening: outfit combinations built only from clothes you own.",
@@ -33,12 +36,40 @@ function GeneratePage() {
   const [style, setStyle] = useState<StyleId>("casual");
   const [loading, setLoading] = useState(false);
   const [outfit, setOutfit] = useState<Outfit | null>(null);
+  const [usePersonalStyle, setUsePersonalStyle] = useState(false);
+  const [referenceFile, setReferenceFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
 
   async function run() {
     if (!wardrobe.length) {
       toast.error("Add a few garments to your wardrobe first");
       return;
     }
+    if (usePersonalStyle && !referenceFile) {
+      toast.error("Please upload a reference image for your personal style");
+      return;
+    }
+    setLoading(true);
+    setOutfit(null);
+    try {
+      const userId = "user123";
+      if (usePersonalStyle && referenceFile) {
+        const success = await uploadPersonalStyleRef(referenceFile, userId);
+        if (!success) {
+          toast.error("Failed to process reference image");
+          return;
+        }
+      }
+      setOutfit(await generateOutfit(style, wardrobe, usePersonalStyle ? userId : undefined));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleFile(file: File) {
+    setReferenceFile(file);
+    setPreview(URL.createObjectURL(file));
+  }
     setLoading(true);
     setOutfit(null);
     try {
@@ -82,9 +113,32 @@ function GeneratePage() {
       </div>
 
       <div className="flex flex-wrap gap-3">
+        <div className="flex items-center space-x-2 w-full mb-2">
+          <Switch id="personal-style" checked={usePersonalStyle} onCheckedChange={setUsePersonalStyle} />
+          <Label htmlFor="personal-style">Mənim öz stilimə uyğun et</Label>
+        </div>
+        
+        {usePersonalStyle && (
+          <div className="grid gap-4 w-full md:grid-cols-[minmax(0,1fr)_16rem] mb-4">
+            <UploadZone
+              title="Upload your style reference"
+              subtitle="Drop a photo you like"
+              onFile={handleFile}
+              disabled={loading}
+            />
+            {preview && (
+              <img
+                src={preview}
+                alt="Reference style"
+                className="glass h-full max-h-48 w-full rounded-3xl object-cover p-1.5"
+              />
+            )}
+          </div>
+        )}
+
         <Button onClick={run} disabled={loading} className="rounded-full px-6">
           <Sparkles className="size-4" />
-          {loading ? "Styling…" : "Generate outfit"}
+          {loading ? "Stylingâ€¦" : "Generate outfit"}
         </Button>
         {outfit && (
           <>
@@ -109,10 +163,10 @@ function GeneratePage() {
       {loading && (
         <AnalyzingCard
           steps={[
-            "Reading colour harmony across your wardrobe…",
-            "Filtering pieces that fit the chosen style…",
-            "Balancing silhouette and layers…",
-            "Assembling your look…",
+            "Reading colour harmony across your wardrobeâ€¦",
+            "Filtering pieces that fit the chosen styleâ€¦",
+            "Balancing silhouette and layersâ€¦",
+            "Assembling your lookâ€¦",
           ]}
         />
       )}
@@ -130,3 +184,4 @@ function GeneratePage() {
     </div>
   );
 }
+

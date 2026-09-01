@@ -1,8 +1,8 @@
-/**
+﻿/**
  * Isolated mock data layer.
  *
  * Every function here simulates a network round-trip and returns mock data.
- * Swap the bodies for real API calls later — the signatures and the shapes in
+ * Swap the bodies for real API calls later â€” the signatures and the shapes in
  * ./types.ts are the contract the UI depends on.
  */
 import {
@@ -119,27 +119,72 @@ export async function deleteWardrobeItem(id: string): Promise<void> {
 const sample = <T,>(arr: T[], n: number) =>
   [...arr].sort(() => Math.random() - 0.5).slice(0, n);
 
-export async function generateOutfit(style: StyleId, wardrobe: WardrobeItem[]): Promise<Outfit> {
-  await delay(1900);
-  const dress = wardrobe.filter((i) => i.category === "dress");
-  const tops = wardrobe.filter((i) => i.category === "top");
-  const bottoms = wardrobe.filter((i) => i.category === "bottom");
-  const outer = wardrobe.filter((i) => i.category === "outerwear");
-  const shoes = wardrobe.filter((i) => i.category === "shoes");
+export async function generateOutfit(style: StyleId, wardrobe: WardrobeItem[], userId?: string): Promise<Outfit> {
+  const payload: any = { style };
+  if (userId) {
+    payload.user_id = userId;
+  }
+  
+  try {
+    const response = await fetch("http://localhost:8000/api/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Generate failed: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    if (!data || data.length === 0) {
+       return {
+         id: `of_${Date.now().toString(36)}`,
+         style,
+         items: [],
+         createdAt: new Date().toISOString(),
+       };
+    }
+    
+    // Pick the top 1 result (the API returns top 5)
+    const topResult = data[0];
+    
+    // Map items back to frontend types
+    const mappedItems = topResult.items.map((item: any) => {
+      let mappedCategory: Category = "top";
+      const cat = (item.category || "top").toLowerCase();
+      if (["pants", "jeans", "shorts", "skirt"].includes(cat)) mappedCategory = "bottom";
+      else if (["dress"].includes(cat)) mappedCategory = "dress";
+      else if (["jacket", "coat"].includes(cat)) mappedCategory = "outerwear";
+      else if (["shoes", "boots"].includes(cat)) mappedCategory = "shoes";
+      
+      return {
+        id: item.id,
+        imageUrl: item.imageUrl,
+        category: mappedCategory,
+        color: item.color || "Unknown",
+        pattern: item.pattern || "Solid",
+        dateAdded: new Date().toISOString(),
+      };
+    });
 
-  const items: WardrobeItem[] = [];
-  const useDress = dress.length > 0 && Math.random() > 0.6;
-  if (useDress) items.push(...sample(dress, 1));
-  else items.push(...sample(tops, 1), ...sample(bottoms, 1));
-  if (shoes.length && Math.random() > 0.25) items.push(...sample(shoes, 1));
-  if (outer.length && items.length < 4 && Math.random() > 0.4) items.push(...sample(outer, 1));
-
-  return {
-    id: `of_${Date.now().toString(36)}`,
-    style,
-    items: items.length ? items : sample(wardrobe, Math.min(2, wardrobe.length)),
-    createdAt: new Date().toISOString(),
-  };
+    return {
+      id: topResult.id || `of_${Date.now().toString(36)}`,
+      style,
+      items: mappedItems,
+      createdAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    console.error("Failed to generate outfit", err);
+    return {
+      id: `of_${Date.now().toString(36)}`,
+      style,
+      items: [],
+      createdAt: new Date().toISOString(),
+    };
+  }
 }
 
 export async function matchReferenceImage(
@@ -178,4 +223,21 @@ export async function matchReferenceImage(
       },
     ],
   };
+}
+
+export async function uploadPersonalStyleRef(file: File, userId: string = "default_user"): Promise<boolean> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("user_id", userId);
+  
+  try {
+    const response = await fetch("http://localhost:8000/api/style/personal/upload", {
+      method: "POST",
+      body: formData,
+    });
+    return response.ok;
+  } catch (err) {
+    console.error("Failed to upload personal style ref", err);
+    return false;
+  }
 }
