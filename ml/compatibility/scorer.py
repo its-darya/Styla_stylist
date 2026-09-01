@@ -74,8 +74,8 @@ class CompatibilityScorer:
         else:
             # Fallback: model hələ öyrədilməyibsə yeni instansiya yaradılır
             print(
-                f"[CompatibilityScorer Qeyd] Çəki faylı tapılmadı ({self.model_path}). "
-                "İlkin model və kosinus oxşarlığı əsasında işə düşür."
+                f"[CompatibilityScorer] Checkpoint not found ({self.model_path}). "
+                "Starting with base model and cosine similarity."
             )
             self.model = CompatibilityMLP(
                 emb_dim=config.EMB_DIM,
