@@ -127,9 +127,9 @@ function GeneratePage() {
               <SelectValue placeholder="Gender" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="any">H?r ikisi</SelectItem>
-              <SelectItem value="men">Kisi</SelectItem>
-              <SelectItem value="women">Qadin</SelectItem>
+              <SelectItem value="any">Hər ikisi</SelectItem>
+              <SelectItem value="men">Kişi</SelectItem>
+              <SelectItem value="women">Qadın</SelectItem>
             </SelectContent>
           </Select>
 

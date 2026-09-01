@@ -93,7 +93,7 @@ async def get_wardrobe_items():
     
     with store.conn.cursor() as cur:
         cur.execute(
-            """SELECT item_id, image_path, category, color, pattern, created_at 
+            """SELECT item_id, image_path, category, color, pattern, gender, created_at 
                FROM item_embeddings ORDER BY created_at DESC"""
         )
         rows = cur.fetchall()
@@ -106,8 +106,8 @@ async def get_wardrobe_items():
             "category": row[2],
             "color": row[3],
             "pattern": row[4] or "Solid",
-            "gender": row[6].get("gender", "unisex") if row[6] else "unisex",
-            "dateAdded": row[5].isoformat() if row[5] else None
+            "gender": row[5] or "unisex",
+            "dateAdded": row[6].isoformat() if row[6] else None
         })
     return items
 
@@ -204,7 +204,7 @@ async def generate_outfits(req: GenerateRequest):
         raise HTTPException(status_code=500, detail="Models not initialized")
     
     with store.conn.cursor() as cur:
-        cur.execute("SELECT item_id, image_path, category, color, pattern, embedding, meta FROM item_embeddings")
+        cur.execute("SELECT item_id, image_path, category, color, pattern, gender, embedding FROM item_embeddings")
         rows = cur.fetchall()
         
     items = []
@@ -215,8 +215,8 @@ async def generate_outfits(req: GenerateRequest):
             "category": row[2],
             "color": row[3],
             "pattern": row[4] or "Solid",
-            "gender": row[6].get("gender", "unisex") if row[6] else "unisex",
-            "embedding": np.array(row[5][1:-1].split(","), dtype=np.float32) if isinstance(row[5], str) else (row[5].to_numpy() if hasattr(row[5], 'to_numpy') else np.array(row[5], dtype=np.float32))
+            "gender": row[5] or "unisex",
+            "embedding": np.array(row[6][1:-1].split(","), dtype=np.float32) if isinstance(row[6], str) else (row[6].to_numpy() if hasattr(row[6], 'to_numpy') else np.array(row[6], dtype=np.float32))
         })
         
     from ml.retrieval.config import OUTFIT_SLOTS
