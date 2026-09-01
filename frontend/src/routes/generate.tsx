@@ -36,7 +36,8 @@ function GeneratePage() {
   const { wardrobe, savedLooks, saveLook } = useStyla();
   const [style, setStyle] = useState<StyleId>("casual");
   const [loading, setLoading] = useState(false);
-  const [outfit, setOutfit] = useState<Outfit | null>(null);
+  const [outfits, setOutfits] = useState<Outfit[]>([]);
+  const [outfitIndex, setOutfitIndex] = useState(0);
   const [usePersonalStyle, setUsePersonalStyle] = useState(false);
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -51,7 +52,8 @@ function GeneratePage() {
       return;
     }
     setLoading(true);
-    setOutfit(null);
+    setOutfits([]);
+    setOutfitIndex(0);
     try {
       const userId = "user123";
       if (usePersonalStyle && referenceFile) {
@@ -61,9 +63,16 @@ function GeneratePage() {
           return;
         }
       }
-      setOutfit(await generateOutfit(style, wardrobe, usePersonalStyle ? userId : undefined));
+      const results = await generateOutfit(style, wardrobe, usePersonalStyle ? userId : undefined);
+      setOutfits(results);
     } finally {
       setLoading(false);
+    }
+  }
+  
+  function nextOutfit() {
+    if (outfits.length > 0) {
+      setOutfitIndex((i) => (i + 1) % outfits.length);
     }
   }
 
@@ -72,7 +81,8 @@ function GeneratePage() {
     setPreview(URL.createObjectURL(file));
   }
 
-  const saved = outfit ? savedLooks.some((o) => o.id === outfit.id) : false;
+  const currentOutfit = outfits[outfitIndex];
+  const saved = currentOutfit ? savedLooks.some((o) => o.id === currentOutfit.id) : false;
 
   return (
     <div className="space-y-8">
@@ -132,9 +142,9 @@ function GeneratePage() {
             {loading ? "Stylingâ€¦" : "Generate outfit"}
           </Button>
         </div>
-        {outfit && (
+        {currentOutfit && (
           <>
-            <Button variant="outline" className="rounded-full" onClick={run} disabled={loading}>
+            <Button variant="outline" className="rounded-full" onClick={nextOutfit} disabled={loading || outfits.length <= 1}>
               <RefreshCw className="size-4" /> Regenerate
             </Button>
             <Button
@@ -142,7 +152,7 @@ function GeneratePage() {
               className="rounded-full"
               disabled={saved}
               onClick={() => {
-                saveLook(outfit);
+                saveLook(currentOutfit);
                 toast.success("Saved to your looks");
               }}
             >
@@ -163,9 +173,9 @@ function GeneratePage() {
         />
       )}
 
-      {outfit && !loading && <OutfitCard outfit={outfit} />}
+      {outfit && !loading && <OutfitCard outfit={currentOutfit} />}
 
-      {!outfit && !loading && (
+      {!currentOutfit && !loading && (
         <div className="glass rounded-3xl px-6 py-16 text-center">
           <h2 className="font-display text-2xl">No look yet</h2>
           <p className="mt-2 text-sm text-muted-foreground">
