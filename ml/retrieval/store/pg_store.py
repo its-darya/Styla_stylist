@@ -69,6 +69,7 @@ class PgStore(VectorStore):
                     category    TEXT,
                     color       TEXT,
                     pattern     TEXT,
+                    gender      TEXT,
                     embedding   VECTOR({config.EMB_DIM}),
                     model_ver   TEXT DEFAULT '{config.MODEL_VER}',
                     source      TEXT,
@@ -103,6 +104,7 @@ class PgStore(VectorStore):
                 item_meta.get("category"),
                 item_meta.get("color"),
                 item_meta.get("pattern"),
+                item_meta.get("gender"),
                 vec,
                 item_meta.get("model_ver") or config.MODEL_VER,
                 item_meta.get("source"),
@@ -113,8 +115,8 @@ class PgStore(VectorStore):
             cur.executemany(
                 f"""
                 INSERT INTO {self.table}
-                    (item_id, image_path, category, color, pattern, embedding, model_ver, source)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (item_id, image_path, category, color, pattern, gender, embedding, model_ver, source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (item_id) DO UPDATE SET
                     image_path = EXCLUDED.image_path,
                     category   = EXCLUDED.category,

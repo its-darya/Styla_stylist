@@ -157,6 +157,25 @@ class PatternClassifier:
         best = int(np.argmax(probabilities))
         return self.patterns[best], float(probabilities[best])
 
+class GenderClassifier:
+    """Zero-shot gender classification — CLIP text prompts."""
+
+    GENDERS = ["men", "women", "unisex"]
+
+    def __init__(self, embedder) -> None:
+        self.genders = self.GENDERS
+        prompts = [f"a photo of a clothing item for {g}" for g in self.genders]
+        self._prompt_vectors = embedder.embed_texts(prompts)
+        self._embedder = embedder
+
+    def classify_vector(self, vector: np.ndarray) -> tuple[str, float]:
+        scores = self._prompt_vectors @ np.asarray(vector, dtype=np.float32).reshape(-1)
+        logits = scores.astype(np.float64) * config.CATEGORY_LOGIT_SCALE
+        probabilities = np.exp(logits - logits.max())
+        probabilities /= probabilities.sum()
+        best = int(np.argmax(probabilities))
+        return self.genders[best], float(probabilities[best])
+
     def map_labels(self, labels: Sequence[str]) -> dict[str, str]:
         """Qarderob kateqoriya adlarını kobud kateqoriyalara xəritələyir.
 

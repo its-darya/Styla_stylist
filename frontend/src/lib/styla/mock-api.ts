@@ -119,8 +119,8 @@ export async function deleteWardrobeItem(id: string): Promise<void> {
 const sample = <T,>(arr: T[], n: number) =>
   [...arr].sort(() => Math.random() - 0.5).slice(0, n);
 
-export async function generateOutfit(style: StyleId, wardrobe: WardrobeItem[], userId?: string): Promise<Outfit[]> {
-  const payload: any = { style };
+export async function generateOutfit(style: StyleId, wardrobe: WardrobeItem[], userId?: string, gender: string = "any"): Promise<Outfit[]> {
+  const payload: any = { style, gender };
   if (userId) {
     payload.user_id = userId;
   }

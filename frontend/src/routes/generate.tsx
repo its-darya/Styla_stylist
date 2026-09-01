@@ -35,6 +35,7 @@ export const Route = createFileRoute("/generate")({
 function GeneratePage() {
   const { wardrobe, savedLooks, saveLook } = useStyla();
   const [style, setStyle] = useState<StyleId>("casual");
+  const [gender, setGender] = useState<string>("any");
   const [loading, setLoading] = useState(false);
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [outfitIndex, setOutfitIndex] = useState(0);
@@ -121,6 +122,17 @@ function GeneratePage() {
         )}
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <Select value={gender} onValueChange={setGender}>
+            <SelectTrigger className="w-[120px] rounded-full glass border-primary/20 bg-background/50">
+              <SelectValue placeholder="Gender" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">H?r ikisi</SelectItem>
+              <SelectItem value="men">Kisi</SelectItem>
+              <SelectItem value="women">Qadin</SelectItem>
+            </SelectContent>
+          </Select>
+
           <Select value={style} onValueChange={(v) => setStyle(v as StyleId)}>
             <SelectTrigger className="w-[180px] rounded-full glass border-primary/20 bg-background/50">
               <SelectValue placeholder="Select style" />

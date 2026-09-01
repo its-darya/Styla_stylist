@@ -26,7 +26,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 from ml.vision.background import remove_background
 from ml.retrieval.embedder import FashionCLIPEmbedder
-from ml.retrieval.matcher import CategoryClassifier, ColorClassifier, PatternClassifier
+from ml.retrieval.matcher import CategoryClassifier, ColorClassifier, PatternClassifier, GenderClassifier
 from ml.retrieval.store.pg_store import PgStore
 
 # Qlobal ML modellər və DB bağlantısı
@@ -34,6 +34,7 @@ embedder = None
 classifier = None
 color_classifier = None
 pattern_classifier = None
+gender_classifier = None
 store = None
 compat_scorer = None
 style_scorer = None
@@ -41,7 +42,7 @@ personal_style = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global embedder, classifier, color_classifier, pattern_classifier, store, compat_scorer, style_scorer, personal_style
+    global embedder, classifier, color_classifier, pattern_classifier, gender_classifier, store, compat_scorer, style_scorer, personal_style
     print("Initializing ML models...")
     embedder = FashionCLIPEmbedder()
     # Yükləməni tezləşdirmək üçün ilk dəfədən yükləyirik
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
     classifier = CategoryClassifier(embedder)
     color_classifier = ColorClassifier(embedder)
     pattern_classifier = PatternClassifier(embedder)
+    gender_classifier = GenderClassifier(embedder)
     
     print("Connecting to Vector Store (PgStore)...")
     store = PgStore(ensure_schema=True)
@@ -104,6 +106,7 @@ async def get_wardrobe_items():
             "category": row[2],
             "color": row[3],
             "pattern": row[4] or "Solid",
+            "gender": row[6].get("gender", "unisex") if row[6] else "unisex",
             "dateAdded": row[5].isoformat() if row[5] else None
         })
     return items
@@ -129,10 +132,11 @@ class UploadResponse(BaseModel):
     category: str
     color: str
     pattern: str
+    gender: str
 
 @app.post("/api/wardrobe/upload", response_model=UploadResponse)
 async def upload_wardrobe_item(file: UploadFile = File(...)):
-    if not embedder or not classifier or not color_classifier or not pattern_classifier or not store:
+    if not embedder or not classifier or not color_classifier or not pattern_classifier or not gender_classifier or not store:
         raise HTTPException(status_code=500, detail="ML Models are not initialized")
         
     item_id = str(uuid.uuid4())
@@ -161,6 +165,7 @@ async def upload_wardrobe_item(file: UploadFile = File(...)):
         category, cat_prob = classifier.classify_vector(vector)
         color, col_prob = color_classifier.classify_vector(vector)
         pattern, pat_prob = pattern_classifier.classify_vector(vector)
+        gender, gen_prob = gender_classifier.classify_vector(vector)
         
         # 5. DB-yə (pgvector) qeyd edilməsi
         meta = {
@@ -168,6 +173,7 @@ async def upload_wardrobe_item(file: UploadFile = File(...)):
             "category": category,
             "color": color,
             "pattern": pattern,
+            "gender": gender,
             "source": "wardrobe"
         }
         
@@ -179,7 +185,8 @@ async def upload_wardrobe_item(file: UploadFile = File(...)):
             filename=f"/data/images/{item_id}.png",
             category=category,
             color=color,
-            pattern=pattern
+            pattern=pattern,
+            gender=gender
         )
     finally:
         # Təmizlik (orijinal şəkli silirik, ancaq şəffafı DB üçün saxlayırıq)
@@ -188,6 +195,7 @@ async def upload_wardrobe_item(file: UploadFile = File(...)):
 
 class GenerateRequest(BaseModel):
     style: str
+    gender: Optional[str] = "any"
     user_id: Optional[str] = "default_user"
 
 @app.post("/api/generate")
@@ -196,7 +204,7 @@ async def generate_outfits(req: GenerateRequest):
         raise HTTPException(status_code=500, detail="Models not initialized")
     
     with store.conn.cursor() as cur:
-        cur.execute("SELECT item_id, image_path, category, color, pattern, embedding FROM item_embeddings")
+        cur.execute("SELECT item_id, image_path, category, color, pattern, embedding, meta FROM item_embeddings")
         rows = cur.fetchall()
         
     items = []
@@ -207,10 +215,15 @@ async def generate_outfits(req: GenerateRequest):
             "category": row[2],
             "color": row[3],
             "pattern": row[4] or "Solid",
+            "gender": row[6].get("gender", "unisex") if row[6] else "unisex",
             "embedding": np.array(row[5][1:-1].split(","), dtype=np.float32) if isinstance(row[5], str) else (row[5].to_numpy() if hasattr(row[5], 'to_numpy') else np.array(row[5], dtype=np.float32))
         })
         
     from ml.retrieval.config import OUTFIT_SLOTS
+    if req.gender and req.gender.lower() != "any":
+        req_gender = req.gender.lower()
+        items = [i for i in items if i.get("gender", "unisex").lower() in (req_gender, "unisex")]
+
     tops = [i for i in items if i["category"] in OUTFIT_SLOTS["top"] and i["category"] != "dress"]
     bottoms = [i for i in items if i["category"] in OUTFIT_SLOTS["bottom"]]
     dresses = [i for i in items if i["category"] == "dress"]
