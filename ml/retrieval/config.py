@@ -83,6 +83,70 @@ CATEGORIES = [
     "belt",
 ]
 
+# --- Stil ballandırması (style scoring) -----------------------------------
+# 8 stil etiketi. Dəyişdirilərsə stil embedding keşi avtomatik etibarsızlaşır
+# (keş faylının adındakı prompt_hash bu siyahıdan hesablanır).
+STYLES = [
+    "casual",
+    "formal",
+    "streetwear",
+    "sporty",
+    "bohemian",
+    "romantic",
+    "edgy",
+    "vintage",
+]
+# Ehtiyat stil namizədləri — 8x8 oxşarlıq matrisində hansısa cüt çox yaxın
+# çıxarsa (bax STYLE_COLLISION_MAX) onlardan biri bunlarla əvəz olunur.
+STYLE_FALLBACK_CANDIDATES = ["minimalist", "preppy", "elegant", "retro"]
+
+# Prompt ensembling: hər stil 5 şablonla embed olunur, nəticə ortalanır.
+# Tək prompt CLIP-də səs-küylüdür; ansambl stil istiqamətini sabitləşdirir.
+TEMPLATES = [
+    "a photo of a {} outfit",
+    "a {} style clothing item",
+    "{} fashion",
+    "a person wearing {} clothes",
+    "a {} look",
+]
+# İki stil vektoru bundan yaxındırsa onlar praktikada fərqlənmir -> xəbərdarlıq.
+STYLE_COLLISION_MAX = 0.9
+
+# Stil embedding keşi: data/cache/style_embs_{MODEL_VER}_{prompt_hash}.npz
+STYLE_CACHE_DIR = DATA_DIR / "cache"
+STYLE_CACHE_TEMPLATE = "style_embs_{model_ver}_{prompt_hash}.npz"
+STYLE_CACHE_HASH_LEN = 12
+
+# DİQQƏT: aşağıdakı iki hədd FƏRQLİ diapazonlarda yaşayır və bir-biri ilə
+# müqayisə edilə BİLMƏZ (CLIP modality gap):
+#   STYLE_TEXT_THRESHOLD  — şəkil↔MƏTN cosine, tipik olaraq 0.15-0.35
+#   PERSONAL_SIM_THRESHOLD — şəkil↔ŞƏKİL cosine, tipik olaraq 0.5-0.9
+STYLE_TEXT_THRESHOLD = float(os.getenv("STYLA_STYLE_TEXT_THRESHOLD", "0.25"))
+PERSONAL_SIM_THRESHOLD = float(os.getenv("STYLA_PERSONAL_SIM_THRESHOLD", "0.70"))
+
+# Şəxsi stil balının aqreqasiyası: "max" | "mean_top2".
+# Default MAX — zövq çoxmodallıdır (eyni adam həm idman, həm klassik geyinə
+# bilər), ona görə BÜTÜN referanslar üzrə ortalama hər ikisini cəzalandırır.
+PERSONAL_AGG = os.getenv("STYLA_PERSONAL_AGG", "max")
+PERSONAL_AGG_CHOICES = ("max", "mean_top2")
+
+# "casual" maqnit sinifdir — demək olar hər şey ona doğru meyl edir. Sütun
+# (stil) üzrə orta çıxılanda item-lər arasındakı NİSBİ fərq görünən olur.
+STYLE_CENTERING = os.getenv("STYLA_STYLE_CENTERING", "1") not in ("0", "false", "False")
+
+# --- Outfit kombinatorikası -----------------------------------------------
+# Hər slotdan yalnız bu qədər namizəd götürülür -> K^3 kombinasiya.
+CANDIDATES_PER_CATEGORY = int(os.getenv("STYLA_CANDIDATES_PER_CATEGORY", "10"))
+# Outfit slotları -> `CATEGORIES` içindəki kobud etiketlər.
+OUTFIT_SLOTS = {
+    "top": ["t-shirt", "shirt", "sweater", "jacket", "coat", "dress"],
+    "bottom": ["pants", "jeans", "shorts", "skirt"],
+    "shoes": ["shoes", "boots"],
+}
+
+# --- İstifadəçi stil referansları -----------------------------------------
+STYLE_REFS_TABLE = "user_style_refs"
+
 # --- Qiymətləndirmə -------------------------------------------------------
 # Referens şəkli simulyasiyası: istifadəçinin telefonla çəkdiyi/ekrandan
 # götürdüyü şəkil dataset şəklindən fərqlənir (README-dəki "domain gap").
