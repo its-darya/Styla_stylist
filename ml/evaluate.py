@@ -1,12 +1,12 @@
-"""Styla · Mərkəzi Qiymətləndirmə Skripti (Rol D: Data & Evaluation).
+﻿"""Styla Â· MÉ™rkÉ™zi QiymÉ™tlÉ™ndirmÉ™ Skripti (Rol D: Data & Evaluation).
 
-Bütün ML modullarının (Retrieval, Compatibility və Style Classifier)
-metriklərini hesablayır və README-dəki hədəflərlə tutuşdurur:
+BÃ¼tÃ¼n ML modullarÄ±nÄ±n (Retrieval, Compatibility vÉ™ Style Classifier)
+metriklÉ™rini hesablayÄ±r vÉ™ README-dÉ™ki hÉ™dÉ™flÉ™rlÉ™ tutuÅŸdurur:
     - Compatibility: AUC (>=0.80), Accuracy (>=0.80), F1
     - Style Classification: Macro-F1 (>=0.80), Top-1 & Top-3 Accuracy
     - Retrieval / Reference Matching: Recall@5 (>=0.70), mAP, MRR
 
-İstifadə:
+Ä°stifadÉ™:
     python -m ml.evaluate --all
     python -m ml.evaluate --compatibility
     python -m ml.evaluate --style
@@ -25,9 +25,9 @@ sys.path.insert(0, str(BASE_DIR))
 
 
 def evaluate_compatibility_module(data_path: str | None = None) -> dict[str, Any]:
-    """Compatibility modulunu qiymətləndirir."""
+    """Compatibility modulunu qiymÉ™tlÉ™ndirir."""
     print("\n" + "=" * 60)
-    print("1. COMPATIBILITY MODULUNUN QİYMƏTLƏNDİRİLMƏSİ")
+    print("1. COMPATIBILITY MODULUNUN QÄ°YMÆTLÆNDÄ°RÄ°LMÆSÄ°")
     print("=" * 60)
 
     from ml.compatibility import config, get_scorer, score_compatibility
@@ -47,7 +47,7 @@ def evaluate_compatibility_module(data_path: str | None = None) -> dict[str, Any
     if data_path and Path(data_path).exists():
         e1, e2, labels = load_pairs_from_npz(data_path)
     else:
-        # Nümunə test cütləri
+        # NÃ¼munÉ™ test cÃ¼tlÉ™ri
         import numpy as np
         np.random.seed(42)
         n = 200
@@ -69,12 +69,12 @@ def evaluate_compatibility_module(data_path: str | None = None) -> dict[str, Any
     metrics = evaluate(model, test_loader, nn.BCEWithLogitsLoss(), scorer.device)
 
     auc_target = config.TARGET_AUC
-    auc_status = "✓ HƏDƏFƏ ÇATDI" if metrics["auc"] >= auc_target else "✗ HƏDƏFDƏN AŞAĞI"
+    auc_status = "âœ“ HÆDÆFÆ Ã‡ATDI" if metrics["auc"] >= auc_target else "âœ— HÆDÆFDÆN AÅžAÄžI"
 
-    print(f"  Test Nümunə Sayı: {int(metrics['num_samples'])}")
+    print(f"  Test NÃ¼munÉ™ SayÄ±: {int(metrics['num_samples'])}")
     print(f"  Loss             : {metrics['loss']:.4f}")
     print(f"  Accuracy         : {metrics['accuracy']:.4f}")
-    print(f"  AUC              : {metrics['auc']:.4f} (Hədəf: >={auc_target}) -> {auc_status}")
+    print(f"  AUC              : {metrics['auc']:.4f} (HÉ™dÉ™f: >={auc_target}) -> {auc_status}")
     print(f"  F1 Score         : {metrics['f1']:.4f}")
     print(f"  Precision        : {metrics['precision']:.4f}")
     print(f"  Recall           : {metrics['recall']:.4f}")
@@ -83,9 +83,9 @@ def evaluate_compatibility_module(data_path: str | None = None) -> dict[str, Any
 
 
 def evaluate_style_module(data_path: str | None = None) -> dict[str, Any]:
-    """Style Classifier modulunu qiymətləndirir."""
+    """Style Classifier modulunu qiymÉ™tlÉ™ndirir."""
     print("\n" + "=" * 60)
-    print("2. STYLE CLASSIFIER MODULUNUN QİYMƏTLƏNDİRİLMƏSİ")
+    print("2. STYLE CLASSIFIER MODULUNUN QÄ°YMÆTLÆNDÄ°RÄ°LMÆSÄ°")
     print("=" * 60)
 
     from ml.style import config, get_style_classifier
@@ -125,19 +125,19 @@ def evaluate_style_module(data_path: str | None = None) -> dict[str, Any]:
 
     metrics = evaluate_style(model, test_loader, nn.CrossEntropyLoss(), classifier.device)
 
-    print(f"  Test Nümunə Sayı: {int(metrics['num_samples'])}")
+    print(f"  Test NÃ¼munÉ™ SayÄ±: {int(metrics['num_samples'])}")
     print(f"  Loss             : {metrics['loss']:.4f}")
     print(f"  Top-1 Accuracy   : {metrics['accuracy']:.4f}")
     print(f"  Top-3 Accuracy   : {metrics['top3_accuracy']:.4f}")
-    print(f"  Macro-F1         : {metrics['macro_f1']:.4f} (Hədəf: >= 0.80)")
+    print(f"  Macro-F1         : {metrics['macro_f1']:.4f} (HÉ™dÉ™f: >= 0.80)")
 
     return metrics
 
 
 def evaluate_retrieval_module() -> dict[str, Any]:
-    """Retrieval modulunu qiymətləndirir (əgər data varsa)."""
+    """Retrieval modulunu qiymÉ™tlÉ™ndirir (É™gÉ™r data varsa)."""
     print("\n" + "=" * 60)
-    print("3. RETRIEVAL (REFERENCE MATCHING) QİYMƏTLƏNDİRİLMƏSİ")
+    print("3. RETRIEVAL (REFERENCE MATCHING) QÄ°YMÆTLÆNDÄ°RÄ°LMÆSÄ°")
     print("=" * 60)
 
     try:
@@ -146,29 +146,29 @@ def evaluate_retrieval_module() -> dict[str, Any]:
         metrics = evaluate_identity_retrieval()
         r5 = metrics.get("recall@5", 0.0)
         target = config.RECALL_AT_5_TARGET
-        status = "✓ HƏDƏFƏ ÇATDI" if r5 >= target else "✗ HƏDƏFDƏN AŞAĞI"
+        status = "âœ“ HÆDÆFÆ Ã‡ATDI" if r5 >= target else "âœ— HÆDÆFDÆN AÅžAÄžI"
         print(f"  Recall@1 : {metrics.get('recall@1', 0.0):.4f}")
-        print(f"  Recall@5 : {r5:.4f} (Hədəf: >={target}) -> {status}")
+        print(f"  Recall@5 : {r5:.4f} (HÉ™dÉ™f: >={target}) -> {status}")
         print(f"  Recall@10: {metrics.get('recall@10', 0.0):.4f}")
         print(f"  mAP      : {metrics.get('mAP', 0.0):.4f}")
         print(f"  MRR      : {metrics.get('MRR', 0.0):.4f}")
         return metrics
     except Exception as exc:
-        print(f"  [Qeyd] Retrieval qiymətləndirilməsi keçildi ({exc}).")
+        print(f"  [Qeyd] Retrieval qiymÉ™tlÉ™ndirilmÉ™si keÃ§ildi ({exc}).")
         return {}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Styla Bütün Modulların Qiymətləndirilməsi")
-    parser.add_argument("--all", action="store_true", help="Bütün modulları qiymətləndir")
-    parser.add_argument("--compatibility", action="store_true", help="Yalnız Compatibility modulunu")
-    parser.add_argument("--style", action="store_true", help="Yalnız Style Classifier modulunu")
-    parser.add_argument("--retrieval", action="store_true", help="Yalnız Retrieval modulunu")
+    parser = argparse.ArgumentParser(description="Styla BÃ¼tÃ¼n ModullarÄ±n QiymÉ™tlÉ™ndirilmÉ™si")
+    parser.add_argument("--all", action="store_true", help="BÃ¼tÃ¼n modullarÄ± qiymÉ™tlÉ™ndir")
+    parser.add_argument("--compatibility", action="store_true", help="YalnÄ±z Compatibility modulunu")
+    parser.add_argument("--style", action="store_true", help="YalnÄ±z Style Classifier modulunu")
+    parser.add_argument("--retrieval", action="store_true", help="YalnÄ±z Retrieval modulunu")
     parser.add_argument("--compat-data", type=str, default=None)
     parser.add_argument("--style-data", type=str, default=None)
     args = parser.parse_args()
 
-    # Heç bir flag verilmədikdə defolt olaraq hamısını yoxlayırıq
+    # HeÃ§ bir flag verilmÉ™dikdÉ™ defolt olaraq hamÄ±sÄ±nÄ± yoxlayÄ±rÄ±q
     run_all = args.all or (not args.compatibility and not args.style and not args.retrieval)
 
     results = {}
@@ -180,9 +180,88 @@ def main():
         results["retrieval"] = evaluate_retrieval_module()
 
     print("\n" + "=" * 60)
-    print("QİYMƏTLƏNDİRMƏ XÜLASƏSİ TAMAMLANDI")
+    print("QÄ°YMÆTLÆNDÄ°RMÆ XÃœLASÆSÄ° TAMAMLANDI")
     print("=" * 60)
 
 
 if __name__ == "__main__":
     main()
+# ml/evaluate.py
+import random
+
+from ml.compatibility.generate import WardrobeItem, generate_outfit, outfit_is_valid
+from ml.vision.classify import ClassifiedItem, filter_by_confidence
+
+
+def classification_report(
+    items: list[ClassifiedItem],
+    labels: tuple[str, ...],
+) -> dict:
+    y_true = [i.true_category for i in items]
+    y_pred = [i.predicted_category for i in items]
+
+    correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
+    accuracy = correct / len(items) if items else 0.0
+
+    per_class = {}
+    for label in labels:
+        tp = sum(1 for t, p in zip(y_true, y_pred) if t == label and p == label)
+        fp = sum(1 for t, p in zip(y_true, y_pred) if t != label and p == label)
+        fn = sum(1 for t, p in zip(y_true, y_pred) if t == label and p != label)
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+        per_class[label] = {"precision": precision, "recall": recall, "f1": f1}
+
+    macro_f1 = sum(v["f1"] for v in per_class.values()) / len(labels) if labels else 0.0
+    return {"accuracy": accuracy, "macro_f1": macro_f1, "per_class": per_class}
+
+
+def _to_wardrobe_items(items: list[ClassifiedItem]) -> list[WardrobeItem]:
+    return [
+        WardrobeItem(
+            item_id=item.item_id,
+            category=item.predicted_category,
+            true_category=item.true_category,
+        )
+        for item in items
+    ]
+
+
+def valid_outfit_rate(
+    items: list[ClassifiedItem],
+    *,
+    n_outfits: int = 100,
+    seed: int = 0,
+) -> float:
+    wardrobe = _to_wardrobe_items(items)
+    rng = random.Random(seed)
+    valid = 0
+    for _ in range(n_outfits):
+        if outfit_is_valid(generate_outfit(wardrobe, rng=rng), use_true=True):
+            valid += 1
+    return valid / n_outfits if n_outfits else 0.0
+
+
+def threshold_sweep(
+    items: list[ClassifiedItem],
+    labels: tuple[str, ...],
+    *,
+    thresholds: list[float],
+    n_outfits: int = 100,
+    seed: int = 0,
+) -> list[dict]:
+    results = []
+    for threshold in thresholds:
+        kept = filter_by_confidence(items, threshold)
+        report = classification_report(kept, labels)
+        results.append({
+            "threshold": threshold,
+            "kept": len(kept),
+            "total": len(items),
+            "accuracy": report["accuracy"],
+            "macro_f1": report["macro_f1"],
+            "valid_outfit_rate": valid_outfit_rate(kept, n_outfits=n_outfits, seed=seed),
+        })
+    return results
+

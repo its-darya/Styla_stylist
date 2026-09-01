@@ -1,9 +1,9 @@
-"""Styla · Compatibility & Ranking Modulu (Rol A).
+﻿"""Styla A Compatibility & Ranking Modulu (Rol A).
 
-Geyim cütlərinin vizual və stil uyğunluğunu (compatibility) qiymətləndirən
-PyTorch modelləri, təlim skriptləri və sürətli scoring funksiyaları.
+Geyim cAtlTrinin vizual vT stil uyYunluYunu (compatibility) qiymTtlTndirTn
+PyTorch modellTri, tTlim skriptlTri vT sArTtli scoring funksiyalar.
 
-İctimai API:
+ctimai API:
     from ml.compatibility import (
         CompatibilityMLP,
         CompatibilityScorer,
@@ -29,6 +29,14 @@ from ml.compatibility.scorer import (
     score_compatibility_batch,
 )
 from ml.compatibility.train import train_compatibility_model
+from ml.compatibility.generate import (
+    CATEGORIES,
+    Outfit,
+    WardrobeItem,
+    generate_outfit,
+    outfit_is_valid,
+)
+from ml.compatibility.rules import color_clash, hue_distance, is_neutral, pattern_clash
 
 __all__ = [
     "config",
@@ -45,4 +53,13 @@ __all__ = [
     "score_compatibility",
     "score_compatibility_batch",
     "train_compatibility_model",
+    "CATEGORIES",
+    "Outfit",
+    "WardrobeItem",
+    "generate_outfit",
+    "outfit_is_valid",
+    "color_clash",
+    "hue_distance",
+    "is_neutral",
+    "pattern_clash",
 ]
