@@ -33,7 +33,7 @@ from ml.retrieval.store.base import (
 )
 
 # meta dict-in hansı açarları hansı sütuna düşür
-META_COLUMNS = ("image_path", "category", "color", "pattern", "model_ver", "source")
+META_COLUMNS = ("image_path", "category", "color", "pattern", "gender", "model_ver", "source")
 # WHERE filtrində icazə verilən sütunlar (SQL injection-a qarşı ağ siyahı)
 FILTERABLE_COLUMNS = ("category", "color", "pattern", "source", "model_ver")
 
@@ -76,6 +76,9 @@ class PgStore(VectorStore):
                     created_at  TIMESTAMPTZ DEFAULT now()
                 )
             """)
+            cur.execute(
+                f"ALTER TABLE {self.table} ADD COLUMN IF NOT EXISTS gender TEXT"
+            )
         # config.BUILD_ANN_INDEX qəsdən False — exact search istəyirik.
         if config.BUILD_ANN_INDEX:
             raise NotImplementedError(
