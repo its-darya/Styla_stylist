@@ -11,10 +11,6 @@ from typing import Optional, List
 import itertools
 import numpy as np
 from fastapi import Form
-from ml.compatibility.scorer import get_scorer as get_compat_scorer
-from ml.retrieval.style_scorer import StyleScorer
-from ml.retrieval.personal_style import PersonalStyle
-from ml.compatibility.rules import pattern_clash
 import torch
 
 
@@ -28,6 +24,10 @@ from ml.vision.background import remove_background
 from ml.retrieval.embedder import FashionCLIPEmbedder
 from ml.retrieval.matcher import CategoryClassifier, ColorClassifier, PatternClassifier, GenderClassifier
 from ml.retrieval.store.pg_store import PgStore
+from ml.compatibility.scorer import get_scorer as get_compat_scorer
+from ml.retrieval.style_scorer import StyleScorer
+from ml.retrieval.personal_style import PersonalStyle
+from ml.compatibility.rules import pattern_clash
 
 # Qlobal ML modellər və DB bağlantısı
 embedder = None
