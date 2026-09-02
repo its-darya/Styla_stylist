@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DiscoverRouteImport } from './routes/discover'
 import { Route as GenerateRouteImport } from './routes/generate'
 import { Route as ReferenceRouteImport } from './routes/reference'
 import { Route as SavedRouteImport } from './routes/saved'
@@ -17,6 +18,11 @@ import { Route as SavedRouteImport } from './routes/saved'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DiscoverRoute = DiscoverRouteImport.update({
+  id: '/discover',
+  path: '/discover',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GenerateRoute = GenerateRouteImport.update({
@@ -37,12 +43,14 @@ const SavedRoute = SavedRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/discover': typeof DiscoverRoute
   '/generate': typeof GenerateRoute
   '/reference': typeof ReferenceRoute
   '/saved': typeof SavedRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/discover': typeof DiscoverRoute
   '/generate': typeof GenerateRoute
   '/reference': typeof ReferenceRoute
   '/saved': typeof SavedRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/discover': typeof DiscoverRoute
   '/generate': typeof GenerateRoute
   '/reference': typeof ReferenceRoute
   '/saved': typeof SavedRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/generate' | '/reference' | '/saved'
+  fullPaths: '/' | '/discover' | '/generate' | '/reference' | '/saved'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/generate' | '/reference' | '/saved'
-  id: '__root__' | '/' | '/generate' | '/reference' | '/saved'
+  to: '/' | '/discover' | '/generate' | '/reference' | '/saved'
+  id: '__root__' | '/' | '/discover' | '/generate' | '/reference' | '/saved'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DiscoverRoute: typeof DiscoverRoute
   GenerateRoute: typeof GenerateRoute
   ReferenceRoute: typeof ReferenceRoute
   SavedRoute: typeof SavedRoute
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/discover': {
+      id: '/discover'
+      path: '/discover'
+      fullPath: '/discover'
+      preLoaderRoute: typeof DiscoverRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/generate': {
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DiscoverRoute: DiscoverRoute,
   GenerateRoute: GenerateRoute,
   ReferenceRoute: ReferenceRoute,
   SavedRoute: SavedRoute,

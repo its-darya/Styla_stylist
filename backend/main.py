@@ -4,10 +4,13 @@ import uuid
 import shutil
 from pathlib import Path
 from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import itertools
 import numpy as np
 from fastapi import Form
@@ -197,6 +200,7 @@ class GenerateRequest(BaseModel):
     style: str
     gender: Optional[str] = "any"
     user_id: Optional[str] = "default_user"
+    use_personal_style: bool = False
 
 @app.post("/api/generate")
 async def generate_outfits(req: GenerateRequest):
@@ -204,7 +208,7 @@ async def generate_outfits(req: GenerateRequest):
         raise HTTPException(status_code=500, detail="Models not initialized")
     
     with store.conn.cursor() as cur:
-        cur.execute("SELECT item_id, image_path, category, color, pattern, gender, embedding FROM item_embeddings")
+        cur.execute("SELECT item_id, image_path, category, color, pattern, gender, embedding, created_at FROM item_embeddings")
         rows = cur.fetchall()
         
     items = []
@@ -216,7 +220,8 @@ async def generate_outfits(req: GenerateRequest):
             "color": row[3],
             "pattern": row[4] or "Solid",
             "gender": row[5] or "unisex",
-            "embedding": np.array(row[6][1:-1].split(","), dtype=np.float32) if isinstance(row[6], str) else (row[6].to_numpy() if hasattr(row[6], 'to_numpy') else np.array(row[6], dtype=np.float32))
+            "embedding": np.array(row[6][1:-1].split(","), dtype=np.float32) if isinstance(row[6], str) else (row[6].to_numpy() if hasattr(row[6], 'to_numpy') else np.array(row[6], dtype=np.float32)),
+            "dateAdded": row[7].isoformat() if row[7] else None
         })
         
     from ml.retrieval.config import OUTFIT_SLOTS
@@ -227,63 +232,52 @@ async def generate_outfits(req: GenerateRequest):
     tops = [i for i in items if i["category"] in OUTFIT_SLOTS["top"] and i["category"] != "dress"]
     bottoms = [i for i in items if i["category"] in OUTFIT_SLOTS["bottom"]]
     dresses = [i for i in items if i["category"] == "dress"]
-    shoes = [i for i in items if i["category"] in OUTFIT_SLOTS["shoes"]]
+    # Shoes removed completely based on user request
     
     combinations = []
     if tops and bottoms:
-        if shoes:
-            combinations.extend(list(itertools.product(tops, bottoms, shoes)))
-        else:
-            combinations.extend(list(itertools.product(tops, bottoms)))
+        for t, b in itertools.product(tops, bottoms):
+            tg = t.get("gender", "unisex").lower()
+            bg = b.get("gender", "unisex").lower()
+            if tg == bg or tg == "unisex" or bg == "unisex":
+                combinations.append((t, b))
     
     if dresses:
-        if shoes:
-            combinations.extend(list(itertools.product(dresses, shoes)))
-        else:
-            combinations.extend([(d,) for d in dresses])
+        combinations.extend([(d,) for d in dresses])
 
     if not combinations:
         return []
         
     all_embs = np.array([i["embedding"] for i in items])
     if len(all_embs) > 0:
-        style_res = style_scorer.score_styles(all_embs)
+        style_res = style_scorer.score_styles(all_embs, centering=False)
         styles_list = style_res["styles"]
         if req.style in styles_list:
             style_idx = styles_list.index(req.style)
-            item_style_scores = {i["id"]: float(style_res["probs"][idx][style_idx]) for idx, i in enumerate(items)}
+            item_style_scores = {i["id"]: float(style_res["cosine"][idx][style_idx]) for idx, i in enumerate(items)}
         else:
             item_style_scores = {i["id"]: 0.0 for i in items}
     else:
         item_style_scores = {}
 
     item_personal_scores = {}
-    if req.user_id and personal_style:
+    if req.use_personal_style and req.user_id and personal_style:
         if personal_style.count(req.user_id) > 0:
-            refs = personal_style.get_refs(req.user_id)
-            if refs.shape[0] > 0:
-                for i in items:
-                    item_personal_scores[i["id"]] = float(personal_style.personal_score(i["embedding"], refs))
+            p_scores = personal_style.personal_score(all_embs, req.user_id)
+            for idx, i in enumerate(items):
+                item_personal_scores[i["id"]] = float(p_scores[idx])
                     
     top_embs = []
     bot_embs = []
     valid_comb_indices = []
     for idx, c in enumerate(combinations):
         # Determine top and bottom for compatibility scoring
-        if len(c) == 3:
-            # (top, bottom, shoes) - we score top and bottom
+        if len(c) == 2:
+            # (top, bottom)
             top_embs.append(c[0]["embedding"])
             bot_embs.append(c[1]["embedding"])
             valid_comb_indices.append(idx)
-        elif len(c) == 2:
-            if c[0]["category"] == "dress":
-                # (dress, shoes) - no top/bottom compat score
-                pass
-            else:
-                # (top, bottom)
-                top_embs.append(c[0]["embedding"])
-                bot_embs.append(c[1]["embedding"])
-                valid_comb_indices.append(idx)
+        # if len(c) == 1, it's a dress so no top/bottom compat score
         
     compat_scores = [0.0] * len(combinations)
     if top_embs:
@@ -292,25 +286,44 @@ async def generate_outfits(req: GenerateRequest):
             for i, idx in enumerate(valid_comb_indices):
                 compat_scores[idx] = c_scores[i]
         
+    raw_s_scores = [sum(item_style_scores.get(item["id"], 0) for item in c) / len(c) if c else 0.0 for c in combinations]
+    raw_p_scores = [sum(item_personal_scores.get(item["id"], 0) for item in c) / len(c) if c else 0.0 for c in combinations]
+    
+    def min_max_norm(scores):
+        if not scores: return scores
+        min_s = min(scores)
+        max_s = max(scores)
+        if max_s - min_s < 1e-6:
+            return [0.5 for _ in scores]
+        return [(s - min_s) / (max_s - min_s) for s in scores]
+
+    norm_c_scores = min_max_norm(compat_scores)
+    norm_s_scores = min_max_norm(raw_s_scores)
+    norm_p_scores = min_max_norm(raw_p_scores)
+
     results = []
     for idx, c in enumerate(combinations):
-        c_score = compat_scores[idx]
+        c_score = norm_c_scores[idx]
+        s_score = norm_s_scores[idx]
+        p_score = norm_p_scores[idx]
         
-        # Style score based on the WEAKEST link (min) instead of average
-        s_score = min(item_style_scores.get(item["id"], 0) for item in c)
-        
-        p_score = 0.0
-        if item_personal_scores:
-            p_score = max([item_personal_scores.get(item["id"], 0) for item in c] + [0.0])
+        if req.use_personal_style and item_personal_scores:
+            total_score = 0.5 * c_score + 0.3 * s_score + 0.2 * p_score
+        else:
+            total_score = 0.5 * c_score + 0.5 * s_score
             
-        # Boost style score weight to ensure outfits match the selected style closely
-        total_score = c_score * 0.3 + s_score * 0.5 + p_score * 0.2
-        
         patterns = [item["pattern"] for item in c]
         if pattern_clash(patterns):
-            total_score -= 0.2
+            total_score -= 0.15
             
-        outfit_items = [{"id": item["id"], "imageUrl": item["imageUrl"], "category": item["category"]} for item in c]
+        outfit_items = [{
+            "id": item["id"],
+            "imageUrl": item["imageUrl"],
+            "category": item["category"],
+            "color": item["color"],
+            "pattern": item["pattern"],
+            "dateAdded": item["dateAdded"]
+        } for item in c]
         results.append({
             "outfit": outfit_items,
             "score": total_score
@@ -319,7 +332,9 @@ async def generate_outfits(req: GenerateRequest):
     results.sort(key=lambda x: x["score"], reverse=True)
     top_5 = results[:5]
     
-    return [{"id": str(uuid.uuid4()), "items": r["outfit"]} for r in top_5]
+    import datetime as dt
+    now_iso = dt.datetime.utcnow().isoformat() + "Z"
+    return [{"id": str(uuid.uuid4()), "style": req.style, "items": r["outfit"], "createdAt": now_iso} for r in top_5]
 
 @app.post("/api/style/personal/upload")
 async def upload_personal_style(file: UploadFile = File(...), user_id: str = Form("default_user")):
@@ -339,3 +354,4 @@ async def upload_personal_style(file: UploadFile = File(...), user_id: str = For
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
+

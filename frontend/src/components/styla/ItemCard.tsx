@@ -55,6 +55,7 @@ export function ItemCard({
           <Detail label="Category" value={categoryLabel(item.category)} />
           <Detail label="Colour" value={item.color} />
           <Detail label="Pattern" value={item.pattern} />
+          <Detail label="Gender" value={item.gender ? item.gender.charAt(0).toUpperCase() + item.gender.slice(1) : "Unisex"} />
           <Detail
             label="Added"
             value={new Date(item.dateAdded).toLocaleDateString(undefined, {
