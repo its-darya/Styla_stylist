@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 import datetime
 
 # Dummy DB string since we only need MVP, read from env if available
-DB_URL = os.getenv("DATABASE_URL", "postgresql://styla_user:styla_password@localhost:5432/styla_wardrobe")
+DB_URL = os.getenv("DATABASE_URL", "postgresql://styla_user:styla_password@localhost:5440/styla_wardrobe")
 
 engine = create_engine(DB_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
