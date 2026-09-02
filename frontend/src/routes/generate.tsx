@@ -64,7 +64,7 @@ function GeneratePage() {
           return;
         }
       }
-      const results = await generateOutfit(style, wardrobe, usePersonalStyle ? userId : undefined);
+      const results = await generateOutfit(style, wardrobe, usePersonalStyle ? userId : undefined, gender);
       setOutfits(results);
     } finally {
       setLoading(false);
@@ -128,8 +128,8 @@ function GeneratePage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="any">Hər ikisi</SelectItem>
-              <SelectItem value="men">Kişi</SelectItem>
-              <SelectItem value="women">Qadın</SelectItem>
+              <SelectItem value="menswear">Kişi</SelectItem>
+              <SelectItem value="womenswear">Qadın</SelectItem>
             </SelectContent>
           </Select>
 

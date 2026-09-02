@@ -1,11 +1,10 @@
-export type Category = "top" | "bottom" | "dress" | "outerwear" | "shoes";
+export type Category = "top" | "bottom" | "dress" | "outerwear";
 
 export const CATEGORIES: { id: Category; label: string; plural: string }[] = [
   { id: "top", label: "Top", plural: "Tops" },
   { id: "bottom", label: "Bottom", plural: "Bottoms" },
   { id: "dress", label: "Dress", plural: "Dresses" },
   { id: "outerwear", label: "Outerwear", plural: "Outerwear" },
-  { id: "shoes", label: "Shoes", plural: "Shoes" },
 ];
 
 export interface WardrobeItem {
@@ -14,6 +13,7 @@ export interface WardrobeItem {
   category: Category;
   color: string;
   pattern: string;
+  gender: string;
   dateAdded: string;
 }
 
@@ -50,6 +50,7 @@ export interface Outfit {
   style: StyleId;
   items: WardrobeItem[];
   createdAt: string;
+  vtonImageUrl?: string;
 }
 
 export interface SuggestedProduct {

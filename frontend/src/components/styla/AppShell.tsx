@@ -1,9 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { Shirt, Sparkles, ImagePlus, Bookmark } from "lucide-react";
+import { Shirt, Sparkles, ImagePlus, Bookmark, Compass } from "lucide-react";
 import type { ReactNode } from "react";
 
 const NAV = [
   { to: "/", label: "Wardrobe", icon: Shirt },
+  { to: "/discover", label: "Discover", icon: Compass },
   { to: "/generate", label: "Generate", icon: Sparkles },
   { to: "/reference", label: "Reference", icon: ImagePlus },
   { to: "/saved", label: "Saved", icon: Bookmark },

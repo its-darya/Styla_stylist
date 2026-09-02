@@ -25,7 +25,7 @@ const PATTERNS = ["Solid", "Ribbed", "Pinstripe", "Check", "Textured"];
 let seed = 1;
 const uid = () => `wi_${Date.now().toString(36)}_${(seed++).toString(36)}`;
 
-const CATALOG: Omit<WardrobeItem, "id" | "dateAdded">[] = [
+const CATALOG: Omit<WardrobeItem, "id" | "dateAdded" | "gender">[] = [
   { imageUrl: img("1521572163474-6864f9cf17ab"), category: "top", color: "Off-white", pattern: "Solid" },
   { imageUrl: img("1596755094514-f87e34085b2c"), category: "top", color: "Sand", pattern: "Ribbed" },
   { imageUrl: img("1620799140408-edc6dcb6d633"), category: "top", color: "Charcoal", pattern: "Solid" },
@@ -37,8 +37,7 @@ const CATALOG: Omit<WardrobeItem, "id" | "dateAdded">[] = [
   { imageUrl: img("1572804013309-59a88b7e92f1"), category: "dress", color: "Charcoal", pattern: "Solid" },
   { imageUrl: img("1591047139829-d91aecb6caea"), category: "outerwear", color: "Olive", pattern: "Solid" },
   { imageUrl: img("1544022613-e87ca75a784a"), category: "outerwear", color: "Sand", pattern: "Textured" },
-  { imageUrl: img("1549298916-b41d501d3772"), category: "shoes", color: "Off-white", pattern: "Solid" },
-  { imageUrl: img("1560769629-975ec94e6a86"), category: "shoes", color: "Espresso", pattern: "Solid" },
+
 ];
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
@@ -56,7 +55,7 @@ export async function getWardrobeItems(): Promise<WardrobeItem[]> {
       if (["pants", "jeans", "shorts", "skirt"].includes(cat)) mappedCategory = "bottom";
       else if (["dress"].includes(cat)) mappedCategory = "dress";
       else if (["jacket", "coat"].includes(cat)) mappedCategory = "outerwear";
-      else if (["shoes", "boots"].includes(cat)) mappedCategory = "shoes";
+
       
       return {
         id: data.id,
@@ -64,6 +63,7 @@ export async function getWardrobeItems(): Promise<WardrobeItem[]> {
         category: mappedCategory,
         color: data.color || "Unknown",
         pattern: data.pattern || "Solid",
+        gender: data.gender || "unisex",
         dateAdded: data.dateAdded || new Date().toISOString(),
       };
     });
@@ -95,7 +95,7 @@ export async function analyzeGarmentPhoto(file: File): Promise<WardrobeItem> {
   if (["pants", "jeans", "shorts", "skirt"].includes(cat)) mappedCategory = "bottom";
   else if (["dress"].includes(cat)) mappedCategory = "dress";
   else if (["jacket", "coat"].includes(cat)) mappedCategory = "outerwear";
-  else if (["shoes", "boots"].includes(cat)) mappedCategory = "shoes";
+
   else if (["bag", "hat", "scarf", "sunglasses", "watch", "belt"].includes(cat)) mappedCategory = "top"; // Accessories fallback
   return {
     id: data.id,
@@ -103,6 +103,7 @@ export async function analyzeGarmentPhoto(file: File): Promise<WardrobeItem> {
     category: mappedCategory,
     color: data.color,
     pattern: data.pattern || "Solid",
+    gender: data.gender || "unisex",
     dateAdded: new Date().toISOString(),
   };
 }
@@ -151,7 +152,7 @@ export async function generateOutfit(style: StyleId, wardrobe: WardrobeItem[], u
         if (["pants", "jeans", "shorts", "skirt"].includes(cat)) mappedCategory = "bottom";
         else if (["dress"].includes(cat)) mappedCategory = "dress";
         else if (["jacket", "coat"].includes(cat)) mappedCategory = "outerwear";
-        else if (["shoes", "boots"].includes(cat)) mappedCategory = "shoes";
+  
         
         return {
           id: item.id,
@@ -184,7 +185,7 @@ export async function matchReferenceImage(
   const matchedSource = sample(wardrobe, Math.min(2, wardrobe.length));
   const usedCategories = new Set(matchedSource.map((i) => i.category));
   const missingCategory =
-    CATEGORIES.find((c) => !usedCategories.has(c.id))?.id ?? ("shoes" as Category);
+    CATEGORIES.find((c) => !usedCategories.has(c.id))?.id ?? ("top" as Category);
 
   return {
     matchedItems: matchedSource.map((wardrobeItem, i) => ({
@@ -229,4 +230,29 @@ export async function uploadPersonalStyleRef(file: File, userId: string = "defau
     console.error("Failed to upload personal style ref", err);
     return false;
   }
+}
+
+export async function startTryOn(outfitId: string, avatarId: string, items: WardrobeItem[]): Promise<string> {
+  const response = await fetch("http://localhost:8000/api/tryOn", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      outfit_id: outfitId,
+      avatar_id: avatarId,
+      items: items
+    })
+  });
+  if (!response.ok) {
+    throw new Error("Failed to start Try-On job");
+  }
+  const data = await response.json();
+  return data.job_id;
+}
+
+export async function checkTryOn(jobId: string): Promise<{status: string, result_url?: string, error?: string}> {
+  const response = await fetch(`http://localhost:8000/api/tryOn/${jobId}`);
+  if (!response.ok) {
+    throw new Error("Failed to check Try-On status");
+  }
+  return response.json();
 }

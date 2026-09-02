@@ -160,11 +160,15 @@ class PatternClassifier:
 class GenderClassifier:
     """Zero-shot gender classification — CLIP text prompts."""
 
-    GENDERS = ["men", "women", "unisex"]
+    GENDERS = ["menswear", "womenswear", "unisex"]
 
     def __init__(self, embedder) -> None:
         self.genders = self.GENDERS
-        prompts = [f"a photo of a clothing item for {g}" for g in self.genders]
+        prompts = [
+            "a photo of menswear",
+            "a photo of womenswear",
+            "a photo of unisex clothing"
+        ]
         self._prompt_vectors = embedder.embed_texts(prompts)
         self._embedder = embedder
 

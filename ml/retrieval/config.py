@@ -73,8 +73,6 @@ CATEGORIES = [
     "jeans",
     "shorts",
     "skirt",
-    "shoes",
-    "boots",
     "bag",
     "hat",
     "scarf",
@@ -141,7 +139,6 @@ CANDIDATES_PER_CATEGORY = int(os.getenv("STYLA_CANDIDATES_PER_CATEGORY", "10"))
 OUTFIT_SLOTS = {
     "top": ["t-shirt", "shirt", "sweater", "jacket", "coat", "dress"],
     "bottom": ["pants", "jeans", "shorts", "skirt"],
-    "shoes": ["shoes", "boots"],
 }
 
 # --- İstifadəçi stil referansları -----------------------------------------
