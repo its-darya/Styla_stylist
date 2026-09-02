@@ -72,19 +72,14 @@ class CompatibilityScorer:
             self.model.eval()
             print(f"[CompatibilityScorer] Model yükləndi: {self.model_path}")
         else:
-            # Fallback: model hələ öyrədilməyibsə yeni instansiya yaradılır
+            # Fallback: model hələ öyrədilməyibsə, təsadüfi çəkilərlə deyil,
+            # cosine oxşarlığı ilə işləyirik. `self.model = None` qaldıqda
+            # `score()` / `score_batch()` içindəki cosine fallback işə düşür.
             print(
                 f"[CompatibilityScorer] Checkpoint not found ({self.model_path}). "
-                "Starting with base model and cosine similarity."
+                "Using cosine similarity."
             )
-            self.model = CompatibilityMLP(
-                emb_dim=config.EMB_DIM,
-                hidden_dims=config.HIDDEN_DIMS,
-                dropout=0.0,
-                mode=config.INPUT_REPRESENTATION,
-                use_batch_norm=False,
-            ).to(self.device)
-            self.model.eval()
+            self.model = None
 
     @torch.no_grad()
     def score(
