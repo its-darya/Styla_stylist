@@ -286,15 +286,28 @@ async def generate_outfits(req: GenerateRequest):
             for i, idx in enumerate(valid_comb_indices):
                 compat_scores[idx] = c_scores[i]
         
+    raw_s_scores = [sum(item_style_scores.get(item["id"], 0) for item in c) / len(c) if c else 0.0 for c in combinations]
+    raw_p_scores = [sum(item_personal_scores.get(item["id"], 0) for item in c) / len(c) if c else 0.0 for c in combinations]
+    
+    def min_max_norm(scores):
+        if not scores: return scores
+        min_s = min(scores)
+        max_s = max(scores)
+        if max_s - min_s < 1e-6:
+            return [0.5 for _ in scores]
+        return [(s - min_s) / (max_s - min_s) for s in scores]
+
+    norm_c_scores = min_max_norm(compat_scores)
+    norm_s_scores = min_max_norm(raw_s_scores)
+    norm_p_scores = min_max_norm(raw_p_scores)
+
     results = []
     for idx, c in enumerate(combinations):
-        c_score = compat_scores[idx]
+        c_score = norm_c_scores[idx]
+        s_score = norm_s_scores[idx]
+        p_score = norm_p_scores[idx]
         
-        s_score = sum(item_style_scores.get(item["id"], 0) for item in c) / len(c) if c else 0.0
-        
-        p_score = 0.0
         if req.use_personal_style and item_personal_scores:
-            p_score = sum(item_personal_scores.get(item["id"], 0) for item in c) / len(c) if c else 0.0
             total_score = 0.5 * c_score + 0.3 * s_score + 0.2 * p_score
         else:
             total_score = 0.5 * c_score + 0.5 * s_score
@@ -341,64 +354,4 @@ async def upload_personal_style(file: UploadFile = File(...), user_id: str = For
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
-
-class TryOnRequest(BaseModel):
-    outfit_id: str
-    avatar_id: str
-    items: List[dict]
-
-# In-memory job queue for VTON processes
-vton_jobs: Dict[str, Any] = {}
-
-def process_vton_job(job_id: str, outfit_id: str, avatar_id: str, items: list):
-    try:
-        # Import pipeline here to avoid heavy global imports if not used
-        from ml.vton.catvton_pipeline import CatVTONPipeline
-        pipeline = CatVTONPipeline()
-        
-        output_dir = str(BASE_DIR / "data" / "vton")
-        result_url = pipeline.try_on_outfit(avatar_id, items, output_dir)
-        
-        vton_jobs[job_id]["status"] = "completed"
-        vton_jobs[job_id]["result_url"] = result_url
-    except Exception as e:
-        print(f"VTON Job {job_id} failed: {e}")
-        vton_jobs[job_id]["status"] = "failed"
-        vton_jobs[job_id]["error"] = str(e)
-
-@app.post("/api/tryOn")
-async def start_try_on(req: TryOnRequest, background_tasks: BackgroundTasks):
-    """
-    Starts an async Virtual Try-On job using CatVTON.
-    Returns a job_id immediately.
-    """
-    job_id = str(uuid.uuid4())
-    vton_jobs[job_id] = {
-        "status": "processing",
-        "outfit_id": req.outfit_id,
-        "avatar_id": req.avatar_id,
-        "result_url": None,
-        "error": None
-    }
-    
-    # Run the heavy ML process in the background
-    background_tasks.add_task(
-        process_vton_job, 
-        job_id, 
-        req.outfit_id, 
-        req.avatar_id, 
-        req.items
-    )
-    
-    return {"job_id": job_id}
-
-@app.get("/api/tryOn/{job_id}")
-async def get_try_on_status(job_id: str):
-    """
-    Polls the status of a Try-On job.
-    """
-    if job_id not in vton_jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    return vton_jobs[job_id]
 
