@@ -279,7 +279,7 @@ async def generate_outfits(req: GenerateRequest):
             valid_comb_indices.append(idx)
         # if len(c) == 1, it's a dress so no top/bottom compat score
         
-    compat_scores = [0.0] * len(combinations)
+    compat_scores = [1.0 if len(c) == 1 else 0.0 for c in combinations]
     if top_embs:
         with torch.no_grad():
             c_scores = compat_scorer.score_batch(np.array(top_embs), np.array(bot_embs)).tolist()
