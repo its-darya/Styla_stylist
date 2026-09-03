@@ -343,15 +343,21 @@ async def upload_personal_style(file: UploadFile = File(...), user_id: str = For
     
     tmp_dir = BASE_DIR / "tmp" / "refs"
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    tmp_path = tmp_dir / f"{uuid.uuid4()}_{file.filename}"
+    file_uuid = str(uuid.uuid4())
+    tmp_path = tmp_dir / f"{file_uuid}_{file.filename}"
+    out_path = tmp_dir / f"{file_uuid}_seg.png"
     
     with open(tmp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
     try:
-        personal_style.add_style_refs(user_id, [tmp_path])
+        # Segment the reference image to extract clothing/person
+        remove_background(tmp_path, out_path, background="transparent")
+        personal_style.add_style_refs(user_id, [out_path])
         return {"success": True}
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
+        if out_path.exists():
+            out_path.unlink()
 
