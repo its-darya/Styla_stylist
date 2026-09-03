@@ -242,7 +242,7 @@ async def generate_outfits(req: GenerateRequest):
             if tg == bg or tg == "unisex" or bg == "unisex":
                 combinations.append((t, b))
     
-    if dresses:
+    if dresses and req.style.lower() != "sporty":
         combinations.extend([(d,) for d in dresses])
 
     if not combinations:
