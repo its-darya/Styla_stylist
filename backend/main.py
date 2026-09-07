@@ -2,6 +2,7 @@ import sys
 import os
 import uuid
 import shutil
+import urllib.request
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -9,6 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import base64
@@ -16,6 +18,7 @@ import itertools
 import numpy as np
 from fastapi import Form
 import torch
+import pinterest
 
 
 from fastapi.staticfiles import StaticFiles
@@ -26,7 +29,14 @@ sys.path.insert(0, str(BASE_DIR))
 
 from ml.vision.background import remove_background
 from ml.retrieval.embedder import FashionCLIPEmbedder
-from ml.retrieval.matcher import CategoryClassifier, ColorClassifier, PatternClassifier, GenderClassifier
+from ml.retrieval.matcher import (
+    CategoryClassifier,
+    ColorClassifier,
+    PatternClassifier,
+    GenderClassifier,
+    Matcher,
+)
+from ml.retrieval.search import Searcher
 from ml.retrieval.store.pg_store import PgStore
 from ml.compatibility.scorer import get_scorer as get_compat_scorer
 from ml.retrieval.style_scorer import StyleScorer
@@ -45,13 +55,14 @@ compat_scorer = None
 style_scorer = None
 personal_style = None
 kolors_pipeline = None
+matcher = None
 
 # In-memory job cache for try-on results  { job_id -> {status, result_url, error} }
 _tryon_jobs: Dict[str, Dict] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global embedder, classifier, color_classifier, pattern_classifier, gender_classifier, store, compat_scorer, style_scorer, personal_style, kolors_pipeline
+    global embedder, classifier, color_classifier, pattern_classifier, gender_classifier, store, compat_scorer, style_scorer, personal_style, kolors_pipeline, matcher
     print("Initializing ML models...")
     embedder = FashionCLIPEmbedder()
     # Yükləməni tezləşdirmək üçün ilk dəfədən yükləyirik
@@ -68,6 +79,7 @@ async def lifespan(app: FastAPI):
     personal_style = PersonalStyle(db_url=store.db_url)
     kolors_pipeline = CatVTONPipeline()
     print("Kolors Virtual Try-On pipeline ready.")
+    matcher = Matcher(searcher=Searcher(store=store, embedder=embedder))
     yield
     print("Shutting down Vector Store connection...")
     if store:
@@ -96,6 +108,156 @@ app.mount("/data", StaticFiles(directory=str(data_dir)), name="data")
 @app.get("/health")
 def health_check():
     return {"status": "ok", "message": "Styla API is running"}
+
+
+# --- Pinterest reference feed ---
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+
+
+@app.get("/api/pinterest/auth")
+def pinterest_auth():
+    url = pinterest.get_client().auth_url()
+    if not url:
+        raise HTTPException(status_code=400, detail="Pinterest credentials not configured")
+    return RedirectResponse(url)
+
+
+@app.get("/api/pinterest/callback")
+def pinterest_callback(code: Optional[str] = None, error: Optional[str] = None):
+    client = pinterest.get_client()
+    if code:
+        client.exchange_code(code)
+    return RedirectResponse(f"{FRONTEND_URL}/reference?pinterest=connected")
+
+
+@app.get("/api/pinterest/feed")
+def pinterest_feed(page_size: int = 25):
+    return pinterest.get_client().outfit_feed(page_size=page_size)
+
+
+# --- Reference matching ---
+
+# Hər hansı uyğunluğun göstərilməsi üçün minimum cosine oxşarlıq.
+# Real telefon/Pinterest şəkillərində tipik score 0.5–0.65-dir, ona görə
+# klassik 0.75 həddi çox sərtdir — yaxın əşyaları gizlədir.
+REFERENCE_MIN_SCORE = 0.4
+REFERENCE_TOP_K = 3
+# Rəngə əlavə çəki: eyni rəngli namizəd bu qədər irəli çəkilir.
+# Cosine faizi olduğu kimi göstərilir, yalnız sıralama rəngə həssas olur.
+REFERENCE_COLOR_BOOST = 0.08
+
+
+def _norm_color(value: object) -> str:
+    return str(value or "").strip().lower()
+
+
+def _map_category(coarse: str) -> str:
+    c = (coarse or "").lower()
+    if c in ("pants", "jeans", "shorts", "skirt"):
+        return "bottom"
+    if c == "dress":
+        return "dress"
+    if c in ("jacket", "coat"):
+        return "outerwear"
+    return "top"
+
+
+@app.post("/api/reference/match")
+async def match_reference(
+    file: Optional[UploadFile] = File(None),
+    image_url: Optional[str] = Form(None),
+):
+    if not matcher or not store or not color_classifier:
+        raise HTTPException(status_code=500, detail="Models not initialized")
+    if file is None and not image_url:
+        raise HTTPException(status_code=400, detail="file or image_url required")
+
+    tmp_dir = BASE_DIR / "tmp" / "reference"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"{uuid.uuid4()}.img"
+
+    try:
+        if file is not None:
+            with open(tmp_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+        else:
+            req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                with open(tmp_path, "wb") as buffer:
+                    shutil.copyfileobj(resp, buffer)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise HTTPException(status_code=400, detail="Could not load reference image")
+
+    try:
+        if store.count() == 0:
+            return {"matchedItems": [], "missingItems": []}
+
+        vector = matcher.searcher.encode_image(tmp_path)
+        ref_color, ref_conf = color_classifier.classify_vector(vector)
+        ref_color = _norm_color(ref_color)
+        use_color_boost = ref_color not in ("", "multi-color")
+
+        item = matcher.match_item(vector=vector, k=5)
+        reference_url = image_url or ""
+
+        ranked = []
+        for candidate in item.candidates:
+            score = float(candidate["score"])
+            if score < REFERENCE_MIN_SCORE:
+                continue
+            full = store.get(candidate["item_id"])
+            if full is None:
+                continue
+            meta = full.meta
+            same_color = use_color_boost and _norm_color(meta.get("color")) == ref_color
+            ranked.append(
+                {
+                    "candidate_id": candidate["item_id"],
+                    "score": score,
+                    "rank_score": score + (REFERENCE_COLOR_BOOST if same_color else 0.0),
+                    "meta": meta,
+                }
+            )
+        ranked.sort(key=lambda r: r["rank_score"], reverse=True)
+
+        matched_items = []
+        for entry in ranked[:REFERENCE_TOP_K]:
+            meta = entry["meta"]
+            matched_items.append(
+                {
+                    "referenceImageUrl": reference_url,
+                    "wardrobeItem": {
+                        "id": entry["candidate_id"],
+                        "imageUrl": f"http://localhost:8000{meta.get('image_path', '')}",
+                        "category": _map_category(meta.get("category")),
+                        "color": meta.get("color") or "Unknown",
+                        "pattern": meta.get("pattern") or "Solid",
+                        "gender": meta.get("gender") or "unisex",
+                        "dateAdded": "",
+                    },
+                    "matchScore": int(round(entry["score"] * 100)),
+                }
+            )
+
+        if matched_items:
+            return {"matchedItems": matched_items, "missingItems": []}
+
+        return {
+            "matchedItems": [],
+            "missingItems": [
+                {
+                    "referenceImageUrl": reference_url,
+                    "category": _map_category(item.predicted_category or "top"),
+                    "suggestedProducts": [],
+                }
+            ],
+        }
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
 
 @app.get("/api/wardrobe")
 async def get_wardrobe_items():
