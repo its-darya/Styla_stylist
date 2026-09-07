@@ -18,14 +18,13 @@ import itertools
 import numpy as np
 from fastapi import Form
 import torch
-from backend import pinterest
-
-
 from fastapi.staticfiles import StaticFiles
 
 # Modulları tapması üçün layihənin kök qovluğunu sys.path-a əlavə edirik
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
+
+from backend import pinterest
 
 from ml.vision.background import remove_background
 from ml.retrieval.embedder import FashionCLIPEmbedder
