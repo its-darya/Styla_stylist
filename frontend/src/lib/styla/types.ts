@@ -72,3 +72,10 @@ export interface ReferenceMatchResult {
     suggestedProducts: SuggestedProduct[];
   }[];
 }
+
+export interface PinterestPin {
+  id: string;
+  imageUrl: string;
+  title?: string;
+  link?: string;
+}

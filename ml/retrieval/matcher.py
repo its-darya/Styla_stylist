@@ -113,6 +113,25 @@ class CategoryClassifier:
         best = int(np.argmax(probabilities))
         return self.categories[best], float(probabilities[best])
 
+    def map_labels(self, labels: Sequence[str]) -> dict[str, str]:
+        """Qarderob kateqoriya adlarını kobud kateqoriyalara xəritələyir.
+
+        Mətn-mətn oxşarlığı: "Ankle Booties" -> "boots".
+        Oxşarlıq `config.CATEGORY_MAP_MIN_SIM`-dən aşağıdırsa xəritələnmir.
+        """
+        labels = [l for l in dict.fromkeys(labels) if l]
+        if not labels:
+            return {}
+        label_vectors = self._embedder.embed_texts(list(labels))
+        similarity = label_vectors @ self._prompt_vectors.T
+        mapping: dict[str, str] = {}
+        for i, label in enumerate(labels):
+            best = int(np.argmax(similarity[i]))
+            if float(similarity[i][best]) >= config.CATEGORY_MAP_MIN_SIM:
+                mapping[label] = self.categories[best]
+        return mapping
+
+
 class ColorClassifier:
     """Zero-shot rəng təsnifatı — CLIP mətn promptları ilə."""
 
@@ -179,24 +198,6 @@ class GenderClassifier:
         probabilities /= probabilities.sum()
         best = int(np.argmax(probabilities))
         return self.genders[best], float(probabilities[best])
-
-    def map_labels(self, labels: Sequence[str]) -> dict[str, str]:
-        """Qarderob kateqoriya adlarını kobud kateqoriyalara xəritələyir.
-
-        Mətn-mətn oxşarlığı: "Ankle Booties" -> "boots".
-        Oxşarlıq `config.CATEGORY_MAP_MIN_SIM`-dən aşağıdırsa xəritələnmir.
-        """
-        labels = [l for l in dict.fromkeys(labels) if l]
-        if not labels:
-            return {}
-        label_vectors = self._embedder.embed_texts(list(labels))
-        similarity = label_vectors @ self._prompt_vectors.T
-        mapping: dict[str, str] = {}
-        for i, label in enumerate(labels):
-            best = int(np.argmax(similarity[i]))
-            if float(similarity[i][best]) >= config.CATEGORY_MAP_MIN_SIM:
-                mapping[label] = self.categories[best]
-        return mapping
 
 
 class Matcher:
