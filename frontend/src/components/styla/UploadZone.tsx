@@ -17,9 +17,23 @@ export function UploadZone({ title, subtitle, onFile, disabled, className }: Pro
   useEffect(() => {
     function handlePaste(e: ClipboardEvent) {
       if (disabled) return;
-      const file = e.clipboardData?.files?.[0];
-      if (file && file.type.startsWith("image/")) {
-        onFile(file);
+      const direct = e.clipboardData?.files?.[0];
+      if (direct && direct.type.startsWith("image/")) {
+        e.preventDefault();
+        onFile(direct);
+        return;
+      }
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            onFile(file);
+            return;
+          }
+        }
       }
     }
     document.addEventListener("paste", handlePaste);

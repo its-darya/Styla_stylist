@@ -130,6 +130,20 @@ def pinterest_feed(page_size: int = 25):
 
 # --- Reference matching ---
 
+# Hər hansı uyğunluğun göstərilməsi üçün minimum cosine oxşarlıq.
+# Real telefon/Pinterest şəkillərində tipik score 0.5–0.65-dir, ona görə
+# klassik 0.75 həddi çox sərtdir — yaxın əşyaları gizlədir.
+REFERENCE_MIN_SCORE = 0.4
+REFERENCE_TOP_K = 3
+# Rəngə əlavə çəki: eyni rəngli namizəd bu qədər irəli çəkilir.
+# Cosine faizi olduğu kimi göstərilir, yalnız sıralama rəngə həssas olur.
+REFERENCE_COLOR_BOOST = 0.08
+
+
+def _norm_color(value: object) -> str:
+    return str(value or "").strip().lower()
+
+
 def _map_category(coarse: str) -> str:
     c = (coarse or "").lower()
     if c in ("pants", "jeans", "shorts", "skirt"):
@@ -146,7 +160,7 @@ async def match_reference(
     file: Optional[UploadFile] = File(None),
     image_url: Optional[str] = Form(None),
 ):
-    if not matcher or not store:
+    if not matcher or not store or not color_classifier:
         raise HTTPException(status_code=500, detail="Models not initialized")
     if file is None and not image_url:
         raise HTTPException(status_code=400, detail="file or image_url required")
@@ -173,30 +187,55 @@ async def match_reference(
         if store.count() == 0:
             return {"matchedItems": [], "missingItems": []}
 
-        item = matcher.match_item(image=tmp_path, k=5)
+        vector = matcher.searcher.encode_image(tmp_path)
+        ref_color, ref_conf = color_classifier.classify_vector(vector)
+        ref_color = _norm_color(ref_color)
+        use_color_boost = ref_color not in ("", "multi-color")
+
+        item = matcher.match_item(vector=vector, k=5)
         reference_url = image_url or ""
 
-        if item.status == "matched" and item.best_match_id:
-            meta = item.best_match_meta
-            wardrobe_item = {
-                "id": item.best_match_id,
-                "imageUrl": f"http://localhost:8000{meta.get('image_path', '')}",
-                "category": _map_category(meta.get("category")),
-                "color": meta.get("color") or "Unknown",
-                "pattern": meta.get("pattern") or "Solid",
-                "gender": meta.get("gender") or "unisex",
-                "dateAdded": "",
-            }
-            return {
-                "matchedItems": [
-                    {
-                        "referenceImageUrl": reference_url,
-                        "wardrobeItem": wardrobe_item,
-                        "matchScore": int(round(item.score * 100)),
-                    }
-                ],
-                "missingItems": [],
-            }
+        ranked = []
+        for candidate in item.candidates:
+            score = float(candidate["score"])
+            if score < REFERENCE_MIN_SCORE:
+                continue
+            full = store.get(candidate["item_id"])
+            if full is None:
+                continue
+            meta = full.meta
+            same_color = use_color_boost and _norm_color(meta.get("color")) == ref_color
+            ranked.append(
+                {
+                    "candidate_id": candidate["item_id"],
+                    "score": score,
+                    "rank_score": score + (REFERENCE_COLOR_BOOST if same_color else 0.0),
+                    "meta": meta,
+                }
+            )
+        ranked.sort(key=lambda r: r["rank_score"], reverse=True)
+
+        matched_items = []
+        for entry in ranked[:REFERENCE_TOP_K]:
+            meta = entry["meta"]
+            matched_items.append(
+                {
+                    "referenceImageUrl": reference_url,
+                    "wardrobeItem": {
+                        "id": entry["candidate_id"],
+                        "imageUrl": f"http://localhost:8000{meta.get('image_path', '')}",
+                        "category": _map_category(meta.get("category")),
+                        "color": meta.get("color") or "Unknown",
+                        "pattern": meta.get("pattern") or "Solid",
+                        "gender": meta.get("gender") or "unisex",
+                        "dateAdded": "",
+                    },
+                    "matchScore": int(round(entry["score"] * 100)),
+                }
+            )
+
+        if matched_items:
+            return {"matchedItems": matched_items, "missingItems": []}
 
         return {
             "matchedItems": [],
