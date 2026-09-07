@@ -18,7 +18,7 @@ import itertools
 import numpy as np
 from fastapi import Form
 import torch
-import pinterest
+from backend import pinterest
 
 
 from fastapi.staticfiles import StaticFiles
