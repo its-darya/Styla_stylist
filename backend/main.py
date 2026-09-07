@@ -2,6 +2,7 @@ import sys
 import os
 import uuid
 import shutil
+import urllib.request
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -9,12 +10,14 @@ from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import itertools
 import numpy as np
 from fastapi import Form
 import torch
+import pinterest
 
 
 from fastapi.staticfiles import StaticFiles
@@ -25,7 +28,14 @@ sys.path.insert(0, str(BASE_DIR))
 
 from ml.vision.background import remove_background
 from ml.retrieval.embedder import FashionCLIPEmbedder
-from ml.retrieval.matcher import CategoryClassifier, ColorClassifier, PatternClassifier, GenderClassifier
+from ml.retrieval.matcher import (
+    CategoryClassifier,
+    ColorClassifier,
+    PatternClassifier,
+    GenderClassifier,
+    Matcher,
+)
+from ml.retrieval.search import Searcher
 from ml.retrieval.store.pg_store import PgStore
 from ml.compatibility.scorer import get_scorer as get_compat_scorer
 from ml.retrieval.style_scorer import StyleScorer
@@ -42,10 +52,11 @@ store = None
 compat_scorer = None
 style_scorer = None
 personal_style = None
+matcher = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global embedder, classifier, color_classifier, pattern_classifier, gender_classifier, store, compat_scorer, style_scorer, personal_style
+    global embedder, classifier, color_classifier, pattern_classifier, gender_classifier, store, compat_scorer, style_scorer, personal_style, matcher
     print("Initializing ML models...")
     embedder = FashionCLIPEmbedder()
     # Yükləməni tezləşdirmək üçün ilk dəfədən yükləyirik
@@ -60,6 +71,7 @@ async def lifespan(app: FastAPI):
     compat_scorer = get_compat_scorer()
     style_scorer = StyleScorer(embedder=embedder)
     personal_style = PersonalStyle(db_url=store.db_url)
+    matcher = Matcher(searcher=Searcher(store=store, embedder=embedder))
     yield
     print("Shutting down Vector Store connection...")
     if store:
@@ -88,6 +100,117 @@ app.mount("/data", StaticFiles(directory=str(data_dir)), name="data")
 @app.get("/health")
 def health_check():
     return {"status": "ok", "message": "Styla API is running"}
+
+
+# --- Pinterest reference feed ---
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+
+
+@app.get("/api/pinterest/auth")
+def pinterest_auth():
+    url = pinterest.get_client().auth_url()
+    if not url:
+        raise HTTPException(status_code=400, detail="Pinterest credentials not configured")
+    return RedirectResponse(url)
+
+
+@app.get("/api/pinterest/callback")
+def pinterest_callback(code: Optional[str] = None, error: Optional[str] = None):
+    client = pinterest.get_client()
+    if code:
+        client.exchange_code(code)
+    return RedirectResponse(f"{FRONTEND_URL}/reference?pinterest=connected")
+
+
+@app.get("/api/pinterest/feed")
+def pinterest_feed(page_size: int = 25):
+    return pinterest.get_client().outfit_feed(page_size=page_size)
+
+
+# --- Reference matching ---
+
+def _map_category(coarse: str) -> str:
+    c = (coarse or "").lower()
+    if c in ("pants", "jeans", "shorts", "skirt"):
+        return "bottom"
+    if c == "dress":
+        return "dress"
+    if c in ("jacket", "coat"):
+        return "outerwear"
+    return "top"
+
+
+@app.post("/api/reference/match")
+async def match_reference(
+    file: Optional[UploadFile] = File(None),
+    image_url: Optional[str] = Form(None),
+):
+    if not matcher or not store:
+        raise HTTPException(status_code=500, detail="Models not initialized")
+    if file is None and not image_url:
+        raise HTTPException(status_code=400, detail="file or image_url required")
+
+    tmp_dir = BASE_DIR / "tmp" / "reference"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"{uuid.uuid4()}.img"
+
+    try:
+        if file is not None:
+            with open(tmp_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+        else:
+            req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                with open(tmp_path, "wb") as buffer:
+                    shutil.copyfileobj(resp, buffer)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise HTTPException(status_code=400, detail="Could not load reference image")
+
+    try:
+        if store.count() == 0:
+            return {"matchedItems": [], "missingItems": []}
+
+        item = matcher.match_item(image=tmp_path, k=5)
+        reference_url = image_url or ""
+
+        if item.status == "matched" and item.best_match_id:
+            meta = item.best_match_meta
+            wardrobe_item = {
+                "id": item.best_match_id,
+                "imageUrl": f"http://localhost:8000{meta.get('image_path', '')}",
+                "category": _map_category(meta.get("category")),
+                "color": meta.get("color") or "Unknown",
+                "pattern": meta.get("pattern") or "Solid",
+                "gender": meta.get("gender") or "unisex",
+                "dateAdded": "",
+            }
+            return {
+                "matchedItems": [
+                    {
+                        "referenceImageUrl": reference_url,
+                        "wardrobeItem": wardrobe_item,
+                        "matchScore": int(round(item.score * 100)),
+                    }
+                ],
+                "missingItems": [],
+            }
+
+        return {
+            "matchedItems": [],
+            "missingItems": [
+                {
+                    "referenceImageUrl": reference_url,
+                    "category": _map_category(item.predicted_category or "top"),
+                    "suggestedProducts": [],
+                }
+            ],
+        }
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
 
 @app.get("/api/wardrobe")
 async def get_wardrobe_items():
