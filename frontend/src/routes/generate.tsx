@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { OutfitCard } from "@/components/styla/OutfitCard";
 import { AnalyzingCard } from "@/components/styla/Analyzing";
 import { UploadZone } from "@/components/styla/UploadZone";
+import { TryOnPanel } from "@/components/styla/TryOnPanel";
 import { useStyla } from "@/lib/styla/store";
 import { generateOutfit, uploadPersonalStyleRef } from "@/lib/styla/mock-api";
 import { STYLES, type Outfit, type StyleId } from "@/lib/styla/types";
@@ -151,7 +152,7 @@ function GeneratePage() {
 
           <Button onClick={run} disabled={loading} className="rounded-full px-6">
             <Sparkles className="size-4" />
-            {loading ? "Stylingâ€¦" : "Generate outfit"}
+            {loading ? "Styling..." : "Generate outfit"}
           </Button>
         </div>
         {currentOutfit && (
@@ -177,15 +178,20 @@ function GeneratePage() {
       {loading && (
         <AnalyzingCard
           steps={[
-            "Reading colour harmony across your wardrobeâ€¦",
-            "Filtering pieces that fit the chosen styleâ€¦",
-            "Balancing silhouette and layersâ€¦",
-            "Assembling your lookâ€¦",
+            "Reading colour harmony across your wardrobe...",
+            "Filtering pieces that fit the chosen style...",
+            "Balancing silhouette and layers...",
+            "Assembling your look...",
           ]}
         />
       )}
 
-      {currentOutfit && !loading && <OutfitCard outfit={currentOutfit} />}
+      {currentOutfit && !loading && (
+        <div className="space-y-6">
+          <OutfitCard outfit={currentOutfit} />
+          <TryOnPanel outfitId={currentOutfit.id} items={currentOutfit.items} />
+        </div>
+      )}
 
       {!currentOutfit && !loading && (
         <div className="glass rounded-3xl px-6 py-16 text-center">

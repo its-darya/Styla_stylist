@@ -232,25 +232,50 @@ export async function uploadPersonalStyleRef(file: File, userId: string = "defau
   }
 }
 
-export async function startTryOn(outfitId: string, avatarId: string, items: WardrobeItem[]): Promise<string> {
-  const response = await fetch("http://localhost:8000/api/tryOn", {
+/**
+ * Start a Kolors Virtual Try-On job.
+ * Converts the person photo to base64 and sends it to the backend.
+ * Returns { job_id, status, result_url } immediately (synchronous on the server side).
+ */
+export async function startTryOn(
+  outfitId: string,
+  items: WardrobeItem[],
+  personFile: File,
+): Promise<{ job_id: string; status: string; result_url?: string }> {
+  // Convert file to base64
+  const b64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(personFile);
+  });
+
+  const response = await fetch("http://localhost:8000/api/tryon", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      person_image_b64: b64,
       outfit_id: outfitId,
-      avatar_id: avatarId,
-      items: items
-    })
+      items: items.map((item) => ({
+        id: item.id,
+        imageUrl: item.imageUrl,
+        category: item.category,
+        color: item.color,
+      })),
+    }),
   });
+
   if (!response.ok) {
-    throw new Error("Failed to start Try-On job");
+    const err = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(err.detail ?? "Failed to start Try-On job");
   }
-  const data = await response.json();
-  return data.job_id;
+  return response.json();
 }
 
-export async function checkTryOn(jobId: string): Promise<{status: string, result_url?: string, error?: string}> {
-  const response = await fetch(`http://localhost:8000/api/tryOn/${jobId}`);
+export async function checkTryOn(
+  jobId: string,
+): Promise<{ status: string; result_url?: string; error?: string }> {
+  const response = await fetch(`http://localhost:8000/api/tryon/${jobId}`);
   if (!response.ok) {
     throw new Error("Failed to check Try-On status");
   }

@@ -11,6 +11,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
+import base64
 import itertools
 import numpy as np
 from fastapi import Form
@@ -31,6 +32,7 @@ from ml.compatibility.scorer import get_scorer as get_compat_scorer
 from ml.retrieval.style_scorer import StyleScorer
 from ml.retrieval.personal_style import PersonalStyle
 from ml.compatibility.rules import pattern_clash
+from ml.vton.catvton_pipeline import CatVTONPipeline
 
 # Qlobal ML modellər və DB bağlantısı
 embedder = None
@@ -42,10 +44,14 @@ store = None
 compat_scorer = None
 style_scorer = None
 personal_style = None
+kolors_pipeline = None
+
+# In-memory job cache for try-on results  { job_id -> {status, result_url, error} }
+_tryon_jobs: Dict[str, Dict] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global embedder, classifier, color_classifier, pattern_classifier, gender_classifier, store, compat_scorer, style_scorer, personal_style
+    global embedder, classifier, color_classifier, pattern_classifier, gender_classifier, store, compat_scorer, style_scorer, personal_style, kolors_pipeline
     print("Initializing ML models...")
     embedder = FashionCLIPEmbedder()
     # Yükləməni tezləşdirmək üçün ilk dəfədən yükləyirik
@@ -60,6 +66,8 @@ async def lifespan(app: FastAPI):
     compat_scorer = get_compat_scorer()
     style_scorer = StyleScorer(embedder=embedder)
     personal_style = PersonalStyle(db_url=store.db_url)
+    kolors_pipeline = CatVTONPipeline()
+    print("Kolors Virtual Try-On pipeline ready.")
     yield
     print("Shutting down Vector Store connection...")
     if store:
@@ -170,6 +178,21 @@ async def upload_wardrobe_item(file: UploadFile = File(...)):
         pattern, pat_prob = pattern_classifier.classify_vector(vector)
         gender, gen_prob = gender_classifier.classify_vector(vector)
         
+        # 5. Extract and cache clean garment for Virtual Try-On using Segformer
+        try:
+            from ml.vision.segmentation import extract_garment
+            garments_dir = data_img_dir / "garments"
+            garments_dir.mkdir(parents=True, exist_ok=True)
+            garment_path = garments_dir / f"{item_id}.png"
+            # We run it on the original tmp_path because it has the person, out_path is already transparent but might have noise
+            success = extract_garment(str(tmp_path), category, str(garment_path))
+            if not success:
+                # Fallback to transparent output
+                shutil.copyfile(out_path, garment_path)
+        except Exception as e:
+            print(f"[Upload] Garment extraction failed: {e}")
+            shutil.copyfile(out_path, data_img_dir / "garments" / f"{item_id}.png")
+        
         # 5. DB-yə (pgvector) qeyd edilməsi
         meta = {
             "image_path": f"/data/images/{item_id}.png",
@@ -213,9 +236,15 @@ async def generate_outfits(req: GenerateRequest):
         
     items = []
     for row in rows:
+        item_id = row[0]
+        original_url = f"http://localhost:8000{row[1]}"
+        # If segmented garment exists, use it for the thumbnail
+        garment_path = BASE_DIR / "data" / "images" / "garments" / f"{item_id}.png"
+        image_url = f"http://localhost:8000/data/images/garments/{item_id}.png" if garment_path.exists() else original_url
+        
         items.append({
-            "id": row[0],
-            "imageUrl": f"http://localhost:8000{row[1]}",
+            "id": item_id,
+            "imageUrl": image_url,
             "category": row[2],
             "color": row[3],
             "pattern": row[4] or "Solid",
@@ -228,6 +257,37 @@ async def generate_outfits(req: GenerateRequest):
     if req.gender and req.gender.lower() != "any":
         req_gender = req.gender.lower()
         items = [i for i in items if i.get("gender", "unisex").lower() in (req_gender, "unisex")]
+
+    import json
+    try:
+        with open(BASE_DIR / "ml" / "compatibility" / "style_rules.json") as f:
+            style_rules = json.load(f)
+    except Exception as e:
+        print(f"Warning: could not load style rules: {e}")
+        style_rules = {}
+
+    req_style = req.style.lower()
+    rule = style_rules.get(req_style, {})
+    allow_cat = rule.get("allow_categories", [])
+    deny_cat = rule.get("deny_categories", [])
+    deny_pat = rule.get("deny_patterns", [])
+    pref_col = rule.get("prefer_colors", [])
+    pref_pat = rule.get("prefer_patterns", [])
+
+    filtered_items = []
+    for i in items:
+        cat = i["category"].lower()
+        pat = i["pattern"].lower()
+        
+        if allow_cat and cat not in allow_cat:
+            continue
+        if cat in deny_cat:
+            continue
+        if pat in deny_pat:
+            continue
+            
+        filtered_items.append(i)
+    items = filtered_items
 
     tops = [i for i in items if i["category"] in OUTFIT_SLOTS["top"] and i["category"] != "dress"]
     bottoms = [i for i in items if i["category"] in OUTFIT_SLOTS["bottom"]]
@@ -316,6 +376,12 @@ async def generate_outfits(req: GenerateRequest):
         if pattern_clash(patterns):
             total_score -= 0.15
             
+        for item in c:
+            if pref_col and item["color"].lower() in pref_col:
+                total_score += 0.1
+            if pref_pat and item["pattern"].lower() in pref_pat:
+                total_score += 0.1
+            
         outfit_items = [{
             "id": item["id"],
             "imageUrl": item["imageUrl"],
@@ -361,3 +427,73 @@ async def upload_personal_style(file: UploadFile = File(...), user_id: str = For
         if out_path.exists():
             out_path.unlink()
 
+
+# ---------------------------------------------------------------------------
+# Virtual Try-On endpoints (Kolors)
+# ---------------------------------------------------------------------------
+
+class TryOnRequest(BaseModel):
+    person_image_b64: Optional[str] = None          # base64-encoded JPEG/PNG of the person
+    outfit_id: str
+    items: List[Dict[str, Any]]    # list of { id, imageUrl, category, color, ... }
+
+
+@app.post("/api/tryon")
+async def start_tryon(req: TryOnRequest):
+    """Start a Kolors Virtual Try-On job synchronously and return the result URL."""
+    if not kolors_pipeline:
+        raise HTTPException(status_code=500, detail="Try-On pipeline not initialized")
+
+    job_id = str(uuid.uuid4())
+
+    # 1. Decode & save the person photo or use default
+    avatars_dir = BASE_DIR / "data" / "avatars"
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+    person_path = avatars_dir / f"{job_id}_person.jpg"
+
+    if req.person_image_b64:
+        try:
+            img_bytes = base64.b64decode(req.person_image_b64)
+            with open(person_path, "wb") as f:
+                f.write(img_bytes)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid base64 image: {exc}")
+    else:
+        outfit_gender = "male"
+        for item in req.items:
+            gen = item.get("gender", "").lower()
+            if gen in ["women", "female"]:
+                outfit_gender = "female"
+                break
+        
+        base_img = avatars_dir / f"base_{outfit_gender}.png"
+        if not base_img.exists():
+            raise HTTPException(status_code=400, detail=f"Base image not found for {outfit_gender}")
+        shutil.copy(str(base_img), str(person_path))
+
+    # 2. Run Kolors try-on pipeline
+    output_dir = str(BASE_DIR / "data" / "vton")
+    try:
+        result_url = kolors_pipeline.try_on_outfit(
+            avatar_path=str(person_path),
+            outfit_items=req.items,
+            output_dir=output_dir,
+        )
+        _tryon_jobs[job_id] = {"status": "done", "result_url": result_url}
+        return {"job_id": job_id, "status": "done", "result_url": result_url}
+    except Exception as exc:
+        _tryon_jobs[job_id] = {"status": "error", "error": str(exc)}
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        # Clean up the uploaded person photo
+        if person_path.exists():
+            person_path.unlink()
+
+
+@app.get("/api/tryon/{job_id}")
+async def get_tryon_result(job_id: str):
+    """Poll for a Try-On job result (kept for frontend polling compatibility)."""
+    job = _tryon_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job

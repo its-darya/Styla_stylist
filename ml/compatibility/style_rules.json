@@ -1,0 +1,37 @@
+{
+    "formal": {
+        "allow_categories": ["blazer", "shirt", "trousers", "skirt", "heels", "dress"],
+        "deny_categories": ["hoodie", "sneakers", "shorts", "t-shirt", "jeans"],
+        "deny_patterns": ["graphic", "tie-dye"],
+        "prefer_colors": ["black", "navy", "white", "grey", "beige"],
+        "prefer_patterns": ["solid", "pinstripe"]
+    },
+    "casual": {
+        "allow_categories": ["t-shirt", "jeans", "sneakers", "hoodie", "shirt", "shorts", "jacket"],
+        "deny_categories": ["blazer", "heels", "dress"],
+        "deny_patterns": [],
+        "prefer_colors": [],
+        "prefer_patterns": []
+    },
+    "streetwear": {
+        "allow_categories": ["hoodie", "t-shirt", "jeans", "sneakers", "cargo", "jacket", "pants"],
+        "deny_categories": ["heels", "blazer", "dress", "skirt", "trousers", "shirt"],
+        "deny_patterns": [],
+        "prefer_colors": ["black", "white", "red", "neon"],
+        "prefer_patterns": ["graphic", "solid"]
+    },
+    "minimalist": {
+        "allow_categories": [],
+        "deny_categories": ["graphic tee", "cargo"],
+        "deny_patterns": ["graphic", "floral", "animal print", "tie-dye"],
+        "prefer_colors": ["black", "white", "beige", "grey", "navy"],
+        "prefer_patterns": ["solid"]
+    },
+    "vintage": {
+        "allow_categories": [],
+        "deny_categories": ["sneakers", "hoodie"],
+        "deny_patterns": ["neon"],
+        "prefer_colors": ["brown", "mustard", "olive", "burgundy"],
+        "prefer_patterns": ["floral", "plaid", "polka dot"]
+    }
+}
