@@ -13,6 +13,12 @@ export function categoryLabel(id: WardrobeItem["category"]) {
   return CATEGORIES.find((c) => c.id === id)?.label ?? id;
 }
 
+/** "jeans" -> "Jeans"; falls back to the coarse category label. */
+export function itemTypeLabel(item: WardrobeItem) {
+  const fine = item.fineCategory?.trim();
+  return fine ? fine.charAt(0).toUpperCase() + fine.slice(1) : categoryLabel(item.category);
+}
+
 export function ItemCard({
   item,
   onDelete,
@@ -24,16 +30,19 @@ export function ItemCard({
     <Dialog>
       <DialogTrigger asChild>
         <button className="glass group overflow-hidden rounded-3xl p-0 text-left transition-transform hover:-translate-y-1">
-          <div className="aspect-[3/4] overflow-hidden bg-muted">
+          {/* Stored photos are garments cut out on white, at whatever aspect
+              ratio the piece happens to be — contain, so trousers aren't
+              sliced off at the knee. */}
+          <div className="aspect-[3/4] overflow-hidden bg-white">
             <img
               src={item.imageUrl}
               alt={`${item.color} ${categoryLabel(item.category)}`}
               loading="lazy"
-              className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="size-full object-contain p-2 transition-transform duration-500 group-hover:scale-105"
             />
           </div>
           <div className="flex items-center justify-between gap-2 p-3">
-            <span className="truncate text-sm font-medium">{categoryLabel(item.category)}</span>
+            <span className="truncate text-sm font-medium">{itemTypeLabel(item)}</span>
             <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] text-primary">
               {item.color}
             </span>
@@ -43,16 +52,16 @@ export function ItemCard({
       <DialogContent className="max-w-md rounded-3xl">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl">
-            {item.color} {categoryLabel(item.category)}
+            {item.color} {itemTypeLabel(item)}
           </DialogTitle>
         </DialogHeader>
         <img
           src={item.imageUrl}
           alt={`${item.color} ${categoryLabel(item.category)}`}
-          className="aspect-[3/4] w-full rounded-2xl object-cover"
+          className="aspect-[3/4] w-full rounded-2xl bg-white object-contain p-3"
         />
         <dl className="grid grid-cols-2 gap-3 text-sm">
-          <Detail label="Category" value={categoryLabel(item.category)} />
+          <Detail label="Category" value={`${categoryLabel(item.category)}${item.fineCategory ? ` · ${itemTypeLabel(item)}` : ""}`} />
           <Detail label="Colour" value={item.color} />
           <Detail label="Pattern" value={item.pattern} />
           <Detail label="Gender" value={item.gender ? item.gender.charAt(0).toUpperCase() + item.gender.slice(1) : "Unisex"} />

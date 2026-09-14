@@ -164,29 +164,57 @@ styla/
 
 ## Setup
 
-> This section will be updated as the project evolves. The steps below reflect the planned dev environment.
+### 1. Database
+
+One PostgreSQL database with the [pgvector](https://github.com/pgvector/pgvector) extension holds everything: accounts, wardrobe embeddings, personal-style references and saved looks. Point `DATABASE_URL` at it in `.env`:
+
+- **Local** — `docker compose up -d` starts a pgvector container on port 5440 (`init.sql` creates the schema).
+- **Shared** — the team's Neon Postgres (pooled connection string with `sslmode=require`).
+
+The backend applies the schema on every start (`backend/db.py`), so switching databases needs no manual migration. `python -m backend.db` runs the migration standalone and prints a status.
+
+### 2. Backend
 
 ```bash
-# Clone the repo
-git clone https://github.com/its-darya/Styla_stylist.git
-cd Styla_stylist
-
-# Environment variables
-cp .env.example .env
-
-# Backend + database (Docker)
-docker compose up -d
-
-# Backend dependencies (for local runs)
-cd backend
-pip install -r requirements.txt --break-system-packages
-uvicorn main:app --reload
-
-# Frontend
-cd ../frontend
-npm install
-npm run dev
+cp .env.example .env            # then set DATABASE_URL (and optionally STYLA_JWT_SECRET)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+pip install -r backend/requirements.txt
+python -m uvicorn backend.main:app --port 8000
 ```
+
+On first start a demo account is created (`demo@styla.app` / `demo1234`, configurable via `STYLA_DEMO_*`). Any wardrobe rows that pre-date accounts are assigned to it.
+
+### 3. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev                     # http://localhost:5173 (VITE_API_URL defaults to http://localhost:8000)
+```
+
+`run.bat` does all three steps on Windows.
+
+### 4. Seed a wardrobe (optional)
+
+```bash
+python seed_hf.py --count 60                      # HuggingFace fashion product photos -> demo account
+python seed_db.py --email you@example.com --password ...   # Platzi store photos -> your account
+```
+
+## Accounts & API
+
+Sign up / sign in from the app (`/signup`, `/login`). Sessions are JWTs (7 days) sent as `Authorization: Bearer <token>`; passwords are bcrypt-hashed. Every endpoint below is scoped to the signed-in user.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me` | accounts |
+| `GET/POST /api/wardrobe`, `DELETE /api/wardrobe/{id}` | garments (upload = background removal + FashionCLIP attributes + embedding) |
+| `POST /api/generate` | outfits for a style (`backend/outfits.py`): candidate top+bottom / dress (+ outerwear) combos scored on compatibility, colour harmony, zero-shot style similarity, personal-style similarity and style rules, then a diverse top-N. Options: `outerwear` (`auto`/`always`/`never`), `must_include` (build every look around one garment), `exclude_ids`, and `offset` (skip looks already shown, so asking again returns new combinations) |
+| `POST /api/reference/match` | reference look (`backend/reference.py`): clothes segmentation splits the photo into top / bottom / dress crops, each crop is embedded and searched against the user's items in the same slot; missing pieces get shop-search links |
+| `GET/POST /api/looks`, `DELETE /api/looks/{id}` | saved looks |
+| `GET/POST/DELETE /api/style/personal` | personal-style reference photos |
+| `POST /api/tryon` | virtual try-on: base layer, then bottom, then jacket, each fed into the next step. Each garment is tried against several Hugging Face Spaces in turn (IDM-VTON, OOTDiffusion, CatVTON); if all are out of GPU quota or asleep it falls back to an offline preview (`ml/vton/local_preview.py`) that draws the garments onto the photo locally, so try-on always returns something. The response's `mode` is `ai` or `preview`, and `applied`/`skipped` report per-garment outcomes. Set `HF_TOKEN` for a larger GPU quota |
 
 ## Team
 

@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Shirt, Download, Loader2, Sparkles, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { API_BASE, startTryOn } from "@/lib/styla/api";
 import type { WardrobeItem } from "@/lib/styla/types";
 
 // ---------------------------------------------------------------------------
@@ -12,29 +13,19 @@ import type { WardrobeItem } from "@/lib/styla/types";
 interface TryOnPanelProps {
   outfitId: string;
   items: WardrobeItem[];
+  /** Start the try-on as soon as the panel appears, because the user asked
+      for this specific look rather than merely selecting it. */
+  autoStart?: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Strip the data:…;base64, prefix
-      resolve(result.split(",")[1]);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 const STEPS = [
   "Uploading your photo…",
   "Detecting clothing regions…",
-  "Generating try-on with Kolors AI…",
+  "Generating the try-on…",
   "Compositing result…",
   "Almost there…",
 ];
@@ -43,18 +34,23 @@ const STEPS = [
 // Component
 // ---------------------------------------------------------------------------
 
-export function TryOnPanel({ outfitId, items }: TryOnPanelProps) {
+export function TryOnPanel({ outfitId, items, autoStart = false }: TryOnPanelProps) {
   const outfitGender = useMemo(() => {
-    const hasWomen = items.some(i => i.gender?.toLowerCase() === 'women' || i.gender?.toLowerCase() === 'female');
+    const hasWomen = items.some((i) => {
+      const g = i.gender?.toLowerCase() ?? "";
+      return g.includes("women") || g.includes("female");
+    });
     return hasWomen ? 'female' : 'male';
   }, [items]);
 
-  const defaultAvatar = `http://localhost:8000/data/avatars/base_${outfitGender}.png`;
+  const defaultAvatar = `${API_BASE}/data/avatars/base_${outfitGender}.png`;
   const [personFile, setPersonFile] = useState<File | null>(null);
   const [personPreview, setPersonPreview] = useState<string | null>(defaultAvatar);
   const [loading, setLoading] = useState(false);
   const [stepIdx, setStepIdx] = useState(0);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState<string[]>([]);
+  const [mode, setMode] = useState<"ai" | "preview">("ai");
   const [dragOver, setDragOver] = useState(false);
 
   // ---- file handling -------------------------------------------------------
@@ -77,6 +73,16 @@ export function TryOnPanel({ outfitId, items }: TryOnPanelProps) {
 
   // ---- try-on --------------------------------------------------------------
 
+  const runRef = useRef<() => void>(() => {});
+
+  // Fire once per mounted outfit. The parent remounts this panel (keyed on
+  // the outfit id) when a different look is chosen, so this runs for exactly
+  // the look the user pressed the button on.
+  useEffect(() => {
+    if (autoStart) runRef.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, outfitId]);
+
   async function runTryOn() {
     if (!items.length) {
       toast.error("No outfit items to try on.");
@@ -86,6 +92,8 @@ export function TryOnPanel({ outfitId, items }: TryOnPanelProps) {
     setLoading(true);
     setStepIdx(0);
     setResultUrl(null);
+    setSkipped([]);
+    setMode("ai");
 
     // Animate through steps every ~3 s while we wait
     const timer = setInterval(() => {
@@ -93,36 +101,19 @@ export function TryOnPanel({ outfitId, items }: TryOnPanelProps) {
     }, 3000);
 
     try {
-      let b64 = "";
-      if (personFile) {
-        b64 = await fileToBase64(personFile);
+      const data = await startTryOn(outfitId, items, personFile);
+      setResultUrl(data.result_url ?? null);
+      setSkipped(data.skipped ?? []);
+      setMode(data.mode ?? "ai");
+      if (data.skipped && data.skipped.length > 0) {
+        // Be honest about a partial result rather than showing an image that
+        // quietly omits a garment.
+        toast.warning(`Couldn't render: ${data.skipped.join(", ")}`);
+      } else if (data.mode === "preview") {
+        toast.success("Quick preview ready");
+      } else {
+        toast.success("Your virtual try-on is ready!");
       }
-
-      const payload = {
-        person_image_b64: b64,
-        outfit_id: outfitId,
-        items: items.map((item) => ({
-          id: item.id,
-          imageUrl: item.imageUrl,
-          category: item.category,
-          color: item.color,
-        })),
-      };
-
-      const res = await fetch("http://localhost:8000/api/tryon", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail ?? "Try-on failed");
-      }
-
-      const data = await res.json();
-      setResultUrl(data.result_url);
-      toast.success("Your virtual try-on is ready! 🎉");
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "Try-on failed. Please try again.");
     } finally {
@@ -131,6 +122,10 @@ export function TryOnPanel({ outfitId, items }: TryOnPanelProps) {
       setStepIdx(0);
     }
   }
+
+  runRef.current = () => {
+    if (!loading) void runTryOn();
+  };
 
   // ---- render --------------------------------------------------------------
 
@@ -144,7 +139,7 @@ export function TryOnPanel({ outfitId, items }: TryOnPanelProps) {
         <div>
           <p className="font-display text-lg leading-none">Virtual Try-On</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Powered by Kolors AI · Upload your photo to see how this outfit looks on you
+            Upload your photo to see how this outfit looks on you
           </p>
         </div>
       </div>
@@ -235,7 +230,7 @@ export function TryOnPanel({ outfitId, items }: TryOnPanelProps) {
             ) : (
               <>
                 <Sparkles className="size-4" />
-                Try it on with Kolors AI
+                Try it on
               </>
             )}
           </Button>
@@ -280,6 +275,21 @@ export function TryOnPanel({ outfitId, items }: TryOnPanelProps) {
                 Save photo
               </a>
             </div>
+          )}
+
+          {!loading && resultUrl && mode === "preview" && (
+            <p className="rounded-xl bg-secondary/70 px-3 py-2 text-xs text-muted-foreground">
+              Quick preview, drawn from your garments. The AI model was out of
+              free GPU time, so this shows the pieces on the body rather than a
+              photorealistic render.
+            </p>
+          )}
+
+          {!loading && resultUrl && skipped.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Shown without {skipped.join(" and ")} — the try-on service could not
+              render {skipped.length === 1 ? "it" : "them"} this time.
+            </p>
           )}
 
           {!loading && !resultUrl && (

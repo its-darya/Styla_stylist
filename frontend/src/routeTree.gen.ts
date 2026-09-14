@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DiscoverRouteImport } from './routes/discover'
 import { Route as GenerateRouteImport } from './routes/generate'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as ReferenceRouteImport } from './routes/reference'
 import { Route as SavedRouteImport } from './routes/saved'
+import { Route as SignupRouteImport } from './routes/signup'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -30,6 +32,11 @@ const GenerateRoute = GenerateRouteImport.update({
   path: '/generate',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReferenceRoute = ReferenceRouteImport.update({
   id: '/reference',
   path: '/reference',
@@ -40,43 +47,78 @@ const SavedRoute = SavedRouteImport.update({
   path: '/saved',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/discover': typeof DiscoverRoute
   '/generate': typeof GenerateRoute
+  '/login': typeof LoginRoute
   '/reference': typeof ReferenceRoute
   '/saved': typeof SavedRoute
+  '/signup': typeof SignupRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/discover': typeof DiscoverRoute
   '/generate': typeof GenerateRoute
+  '/login': typeof LoginRoute
   '/reference': typeof ReferenceRoute
   '/saved': typeof SavedRoute
+  '/signup': typeof SignupRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/discover': typeof DiscoverRoute
   '/generate': typeof GenerateRoute
+  '/login': typeof LoginRoute
   '/reference': typeof ReferenceRoute
   '/saved': typeof SavedRoute
+  '/signup': typeof SignupRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/discover' | '/generate' | '/reference' | '/saved'
+  fullPaths:
+    | '/'
+    | '/discover'
+    | '/generate'
+    | '/login'
+    | '/reference'
+    | '/saved'
+    | '/signup'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/discover' | '/generate' | '/reference' | '/saved'
-  id: '__root__' | '/' | '/discover' | '/generate' | '/reference' | '/saved'
+  to:
+    | '/'
+    | '/discover'
+    | '/generate'
+    | '/login'
+    | '/reference'
+    | '/saved'
+    | '/signup'
+  id:
+    | '__root__'
+    | '/'
+    | '/discover'
+    | '/generate'
+    | '/login'
+    | '/reference'
+    | '/saved'
+    | '/signup'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DiscoverRoute: typeof DiscoverRoute
   GenerateRoute: typeof GenerateRoute
+  LoginRoute: typeof LoginRoute
   ReferenceRoute: typeof ReferenceRoute
   SavedRoute: typeof SavedRoute
+  SignupRoute: typeof SignupRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -102,6 +144,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GenerateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reference': {
       id: '/reference'
       path: '/reference'
@@ -116,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SavedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -123,8 +179,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DiscoverRoute: DiscoverRoute,
   GenerateRoute: GenerateRoute,
+  LoginRoute: LoginRoute,
   ReferenceRoute: ReferenceRoute,
   SavedRoute: SavedRoute,
+  SignupRoute: SignupRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

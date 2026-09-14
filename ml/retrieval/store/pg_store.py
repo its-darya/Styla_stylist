@@ -15,9 +15,11 @@ Biz hər yerdə similarity ilə işləyirik, ona görə `1 - (a <=> b)` yazırı
 from __future__ import annotations
 
 import argparse
+import functools
 import sys
+import threading
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 
@@ -33,9 +35,33 @@ from ml.retrieval.store.base import (
 )
 
 # meta dict-in hansı açarları hansı sütuna düşür
-META_COLUMNS = ("image_path", "category", "color", "pattern", "gender", "model_ver", "source")
+META_COLUMNS = ("image_path", "category", "color", "pattern", "gender", "user_id", "model_ver", "source")
 # WHERE filtrində icazə verilən sütunlar (SQL injection-a qarşı ağ siyahı)
-FILTERABLE_COLUMNS = ("category", "color", "pattern", "source", "model_ver")
+FILTERABLE_COLUMNS = ("category", "color", "pattern", "gender", "user_id", "source", "model_ver")
+
+
+def _reconnecting(method: Callable) -> Callable:
+    """Serialise access and retry once if the connection dropped.
+
+    The store holds one psycopg connection, which two threads must never use
+    at the same time — FastAPI runs sync endpoints in a thread pool, so the
+    lock is what makes concurrent requests safe. Neon also closes idle
+    connections, so a connection-level failure reconnects and runs the method
+    again; every write is an upsert or delete keyed by id, so repeating it is
+    harmless."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        import psycopg
+
+        with self._lock:
+            try:
+                return method(self, *args, **kwargs)
+            except (psycopg.OperationalError, psycopg.InterfaceError):
+                self._reconnect()
+                return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class PgStore(VectorStore):
@@ -45,17 +71,30 @@ class PgStore(VectorStore):
         table: str = config.EMB_TABLE,
         ensure_schema: bool = True,
     ) -> None:
-        import psycopg
-        from pgvector.psycopg import register_vector
-
         if table not in (config.EMB_TABLE,):
             raise ValueError(f"İcazəsiz cədvəl adı: {table!r}")
         self.db_url = db_url
         self.table = table
-        self.conn = psycopg.connect(db_url, autocommit=True)
+        self._lock = threading.RLock()
+        self.conn = self._connect()
         if ensure_schema:
             self._ensure_schema()
-        register_vector(self.conn)
+
+    def _connect(self):
+        import psycopg
+        from pgvector.psycopg import register_vector
+
+        conn = psycopg.connect(self.db_url, autocommit=True, connect_timeout=20)
+        register_vector(conn)
+        return conn
+
+    def _reconnect(self) -> None:
+        try:
+            if getattr(self, "conn", None) is not None and not self.conn.closed:
+                self.conn.close()
+        except Exception:
+            pass
+        self.conn = self._connect()
 
     # --- sxem -------------------------------------------------------------
     def _ensure_schema(self) -> None:
@@ -79,6 +118,12 @@ class PgStore(VectorStore):
             cur.execute(
                 f"ALTER TABLE {self.table} ADD COLUMN IF NOT EXISTS gender TEXT"
             )
+            cur.execute(
+                f"ALTER TABLE {self.table} ADD COLUMN IF NOT EXISTS user_id TEXT"
+            )
+            cur.execute(
+                f"CREATE INDEX IF NOT EXISTS {self.table}_user_id_idx ON {self.table} (user_id)"
+            )
         # config.BUILD_ANN_INDEX qəsdən False — exact search istəyirik.
         if config.BUILD_ANN_INDEX:
             raise NotImplementedError(
@@ -86,6 +131,7 @@ class PgStore(VectorStore):
             )
 
     # --- VectorStore ------------------------------------------------------
+    @_reconnecting
     def add(
         self,
         ids: Sequence[str],
@@ -108,6 +154,7 @@ class PgStore(VectorStore):
                 item_meta.get("color"),
                 item_meta.get("pattern"),
                 item_meta.get("gender"),
+                item_meta.get("user_id"),
                 vec,
                 item_meta.get("model_ver") or config.MODEL_VER,
                 item_meta.get("source"),
@@ -118,13 +165,15 @@ class PgStore(VectorStore):
             cur.executemany(
                 f"""
                 INSERT INTO {self.table}
-                    (item_id, image_path, category, color, pattern, gender, embedding, model_ver, source)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (item_id, image_path, category, color, pattern, gender, user_id, embedding, model_ver, source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (item_id) DO UPDATE SET
                     image_path = EXCLUDED.image_path,
                     category   = EXCLUDED.category,
                     color      = EXCLUDED.color,
                     pattern    = EXCLUDED.pattern,
+                    gender     = EXCLUDED.gender,
+                    user_id    = COALESCE(EXCLUDED.user_id, {self.table}.user_id),
                     embedding  = EXCLUDED.embedding,
                     model_ver  = EXCLUDED.model_ver,
                     source     = EXCLUDED.source
@@ -133,6 +182,7 @@ class PgStore(VectorStore):
             )
         return len(rows)
 
+    @_reconnecting
     def search(
         self,
         vec: np.ndarray,
@@ -160,7 +210,8 @@ class PgStore(VectorStore):
                 f"""
                 SELECT item_id,
                        1 - (embedding <=> %s) AS similarity,
-                       image_path, category, color, pattern, model_ver, source
+                       image_path, category, color, pattern, model_ver, source,
+                       gender, user_id
                 FROM {self.table}
                 {where_sql}
                 ORDER BY embedding <=> %s
@@ -181,20 +232,25 @@ class PgStore(VectorStore):
                     "pattern": row[5],
                     "model_ver": row[6],
                     "source": row[7],
+                    "gender": row[8],
+                    "user_id": row[9],
                 },
             )
             for row in rows
         ]
 
+    @_reconnecting
     def count(self) -> int:
         with self.conn.cursor() as cur:
             cur.execute(f"SELECT count(*) FROM {self.table}")
             return int(cur.fetchone()[0])
 
+    @_reconnecting
     def get(self, item_id: str) -> SearchResult | None:
         with self.conn.cursor() as cur:
             cur.execute(
-                f"""SELECT item_id, image_path, category, color, pattern, model_ver, source
+                f"""SELECT item_id, image_path, category, color, pattern, model_ver, source,
+                           gender, user_id
                     FROM {self.table} WHERE item_id = %s""",
                 (item_id,),
             )
@@ -211,27 +267,38 @@ class PgStore(VectorStore):
                 "pattern": row[4],
                 "model_ver": row[5],
                 "source": row[6],
+                "gender": row[7],
+                "user_id": row[8],
             },
         )
 
+    @_reconnecting
     def delete(self, item_id: str) -> None:
         with self.conn.cursor() as cur:
             cur.execute(f"DELETE FROM {self.table} WHERE item_id = %s", (item_id,))
-        self.conn.commit()
 
     # --- əlavə ------------------------------------------------------------
-    def distinct_values(self, field: str) -> list[str]:
+    @_reconnecting
+    def distinct_values(self, field: str, where: dict[str, Any] | None = None) -> list[str]:
         if field not in FILTERABLE_COLUMNS:
             raise ValueError(
                 f"Sütun dəstəklənmir: {field!r} (icazəli: {FILTERABLE_COLUMNS})"
             )
+        clauses, params = [f"{field} IS NOT NULL"], []
+        for key, wanted in (where or {}).items():
+            if key not in FILTERABLE_COLUMNS:
+                raise ValueError(f"Filtr sütunu dəstəklənmir: {key!r}")
+            clauses.append(f"{key} = %s")
+            params.append(wanted)
         with self.conn.cursor() as cur:
             cur.execute(
                 f"SELECT DISTINCT {field} FROM {self.table} "
-                f"WHERE {field} IS NOT NULL ORDER BY {field}"
+                f"WHERE {' AND '.join(clauses)} ORDER BY {field}",
+                params,
             )
             return [r[0] for r in cur.fetchall()]
 
+    @_reconnecting
     def clear(self) -> int:
         with self.conn.cursor() as cur:
             cur.execute(f"DELETE FROM {self.table}")

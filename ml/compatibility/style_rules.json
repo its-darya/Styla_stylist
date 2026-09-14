@@ -1,37 +1,226 @@
 {
-    "formal": {
-        "allow_categories": ["blazer", "shirt", "trousers", "skirt", "heels", "dress"],
-        "deny_categories": ["hoodie", "sneakers", "shorts", "t-shirt", "jeans"],
-        "deny_patterns": ["graphic", "tie-dye"],
-        "prefer_colors": ["black", "navy", "white", "grey", "beige"],
-        "prefer_patterns": ["solid", "pinstripe"]
-    },
-    "casual": {
-        "allow_categories": ["t-shirt", "jeans", "sneakers", "hoodie", "shirt", "shorts", "jacket"],
-        "deny_categories": ["blazer", "heels", "dress"],
-        "deny_patterns": [],
-        "prefer_colors": [],
-        "prefer_patterns": []
-    },
-    "streetwear": {
-        "allow_categories": ["hoodie", "t-shirt", "jeans", "sneakers", "cargo", "jacket", "pants"],
-        "deny_categories": ["heels", "blazer", "dress", "skirt", "trousers", "shirt"],
-        "deny_patterns": [],
-        "prefer_colors": ["black", "white", "red", "neon"],
-        "prefer_patterns": ["graphic", "solid"]
-    },
-    "minimalist": {
-        "allow_categories": [],
-        "deny_categories": ["graphic tee", "cargo"],
-        "deny_patterns": ["graphic", "floral", "animal print", "tie-dye"],
-        "prefer_colors": ["black", "white", "beige", "grey", "navy"],
-        "prefer_patterns": ["solid"]
-    },
-    "vintage": {
-        "allow_categories": [],
-        "deny_categories": ["sneakers", "hoodie"],
-        "deny_patterns": ["neon"],
-        "prefer_colors": ["brown", "mustard", "olive", "burgundy"],
-        "prefer_patterns": ["floral", "plaid", "polka dot"]
-    }
+  "_comment": "Per-style rules for outfit generation. Category names are the zero-shot labels from ml/retrieval/config.py (t-shirt, shirt, sweater, jacket, coat, dress, pants, jeans, shorts, skirt). Patterns are from PatternClassifier (Solid, Ribbed, Pinstripe, Check, Textured, Floral, Polka Dot, Striped). Colors from ColorClassifier. deny_* are hard filters (relaxed to penalties when nothing would remain); penalty_* subtract; prefer_* add. layer_over_dress says whether a jacket or coat may be put over a dress for this style.",
+  "casual": {
+    "deny_categories": [],
+    "deny_patterns": [],
+    "penalty_categories": [
+      "coat"
+    ],
+    "prefer_categories": [
+      "t-shirt",
+      "jeans",
+      "shirt",
+      "sweater"
+    ],
+    "prefer_colors": [],
+    "prefer_patterns": [],
+    "allow_dress": true,
+    "outerwear": "optional",
+    "layer_over_dress": true
+  },
+  "formal": {
+    "deny_categories": [
+      "t-shirt",
+      "shorts",
+      "jeans"
+    ],
+    "deny_patterns": [
+      "Floral",
+      "Polka Dot"
+    ],
+    "penalty_categories": [
+      "sweater"
+    ],
+    "prefer_categories": [
+      "shirt",
+      "pants",
+      "jacket",
+      "dress"
+    ],
+    "prefer_colors": [
+      "black",
+      "navy",
+      "white",
+      "gray",
+      "beige"
+    ],
+    "prefer_patterns": [
+      "Solid",
+      "Pinstripe"
+    ],
+    "allow_dress": true,
+    "outerwear": "preferred",
+    "layer_over_dress": true
+  },
+  "business-casual": {
+    "deny_categories": [
+      "shorts"
+    ],
+    "deny_patterns": [],
+    "penalty_categories": [
+      "t-shirt"
+    ],
+    "prefer_categories": [
+      "shirt",
+      "pants",
+      "sweater",
+      "skirt",
+      "jacket"
+    ],
+    "prefer_colors": [
+      "navy",
+      "white",
+      "beige",
+      "gray",
+      "black",
+      "blue"
+    ],
+    "prefer_patterns": [
+      "Solid",
+      "Check",
+      "Striped"
+    ],
+    "allow_dress": true,
+    "outerwear": "optional",
+    "layer_over_dress": true
+  },
+  "streetwear": {
+    "deny_categories": [],
+    "deny_patterns": [],
+    "penalty_categories": [
+      "dress",
+      "skirt",
+      "coat",
+      "shirt"
+    ],
+    "prefer_categories": [
+      "t-shirt",
+      "sweater",
+      "jeans",
+      "jacket",
+      "pants"
+    ],
+    "prefer_colors": [
+      "black",
+      "white",
+      "gray"
+    ],
+    "prefer_patterns": [
+      "Solid"
+    ],
+    "allow_dress": false,
+    "outerwear": "optional",
+    "layer_over_dress": false
+  },
+  "sporty": {
+    "deny_categories": [
+      "dress",
+      "skirt",
+      "coat",
+      "shirt"
+    ],
+    "deny_patterns": [
+      "Floral",
+      "Pinstripe"
+    ],
+    "penalty_categories": [
+      "jeans"
+    ],
+    "prefer_categories": [
+      "t-shirt",
+      "shorts",
+      "sweater",
+      "pants"
+    ],
+    "prefer_colors": [],
+    "prefer_patterns": [
+      "Solid",
+      "Striped"
+    ],
+    "allow_dress": false,
+    "outerwear": "optional",
+    "layer_over_dress": false
+  },
+  "bohemian": {
+    "deny_categories": [],
+    "deny_patterns": [],
+    "penalty_categories": [
+      "t-shirt",
+      "jacket"
+    ],
+    "prefer_categories": [
+      "dress",
+      "skirt",
+      "shirt"
+    ],
+    "prefer_colors": [
+      "brown",
+      "beige",
+      "orange",
+      "maroon",
+      "green"
+    ],
+    "prefer_patterns": [
+      "Floral",
+      "Textured"
+    ],
+    "allow_dress": true,
+    "outerwear": "optional",
+    "layer_over_dress": false
+  },
+  "minimalist": {
+    "deny_categories": [],
+    "deny_patterns": [
+      "Floral",
+      "Polka Dot",
+      "Check"
+    ],
+    "penalty_categories": [],
+    "prefer_categories": [],
+    "prefer_colors": [
+      "black",
+      "white",
+      "gray",
+      "beige",
+      "navy"
+    ],
+    "prefer_patterns": [
+      "Solid"
+    ],
+    "allow_dress": true,
+    "outerwear": "optional",
+    "layer_over_dress": true
+  },
+  "elegant": {
+    "deny_categories": [
+      "t-shirt",
+      "shorts",
+      "jeans",
+      "sweater"
+    ],
+    "deny_patterns": [
+      "Check"
+    ],
+    "penalty_categories": [],
+    "prefer_categories": [
+      "dress",
+      "skirt",
+      "shirt",
+      "coat"
+    ],
+    "prefer_colors": [
+      "black",
+      "maroon",
+      "navy",
+      "purple",
+      "white"
+    ],
+    "prefer_patterns": [
+      "Solid",
+      "Textured"
+    ],
+    "allow_dress": true,
+    "outerwear": "optional",
+    "layer_over_dress": false
+  }
 }

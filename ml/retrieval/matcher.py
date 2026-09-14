@@ -113,6 +113,24 @@ class CategoryClassifier:
         best = int(np.argmax(probabilities))
         return self.categories[best], float(probabilities[best])
 
+    def classify_among(
+        self, vector: np.ndarray, allowed: Sequence[str]
+    ) -> tuple[str, float]:
+        """Zero-shot təsnifat, yalnız `allowed` kateqoriyaları arasında.
+
+        Referens outfit-in parçası artıq slotuna görə bilinəndə (məs.
+        segmentasiya "pants" deyib) yalnız həmin slotun incə kateqoriyaları
+        arasında seçim edilir — "dress"/"coat" kimi yanlış cavablar kəsilir.
+        """
+        allowed = [c for c in allowed if c in self.categories] or self.categories
+        idx = [self.categories.index(c) for c in allowed]
+        scores = self._prompt_vectors[idx] @ np.asarray(vector, dtype=np.float32).reshape(-1)
+        logits = scores.astype(np.float64) * config.CATEGORY_LOGIT_SCALE
+        probabilities = np.exp(logits - logits.max())
+        probabilities /= probabilities.sum()
+        best = int(np.argmax(probabilities))
+        return allowed[best], float(probabilities[best])
+
     def map_labels(self, labels: Sequence[str]) -> dict[str, str]:
         """Qarderob kateqoriya adlarını kobud kateqoriyalara xəritələyir.
 

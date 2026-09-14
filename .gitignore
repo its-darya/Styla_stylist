@@ -99,3 +99,23 @@ CLAUDE.md
 
 # Stil embedding keşi (style_prompts.py generasiya edir)
 data/cache/
+
+# Auto-generated login token secret (backend/auth.py)
+data/.jwt_secret
+# Reference-photo crops served for the UI
+data/reference/
+# Backend temp uploads
+tmp/
+
+# Pre-cut-out wardrobe photos kept by reprocess_wardrobe.py
+data/images/original/
+
+# Virtual try-on outputs and intermediates (regenerated on demand)
+data/vton/
+data/vton_test/
+# Reference-photo crops served for the UI
+data/reference/
+# Person photos uploaded for try-on (temporary, and personal)
+data/avatars/*_person.jpg
+# Garment cut-outs cached by the try-on pipeline (regenerated on demand)
+data/garments/

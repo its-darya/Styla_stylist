@@ -34,8 +34,10 @@ saxlanılır. Ballandırma tam matris hasilidir — Python döngüsü yoxdur.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import sys
+import threading
 from pathlib import Path
 from typing import Sequence
 
@@ -69,6 +71,26 @@ def make_ref_id(user_id: str, image_path: str | Path) -> str:
     return f"ref_{digest.hexdigest()[:16]}"
 
 
+def _reconnecting(method):
+    """Serialise access and retry once if the connection dropped.
+
+    One connection is shared by every request thread, so the lock is what
+    keeps concurrent use safe; see the same wrapper in `store/pg_store.py`."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        import psycopg
+
+        with self._lock:
+            try:
+                return method(self, *args, **kwargs)
+            except (psycopg.OperationalError, psycopg.InterfaceError):
+                self._reconnect()
+                return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class PersonalStyle:
     """`user_style_refs` cədvəli üzərində referans idarəsi və ballandırma.
 
@@ -83,17 +105,31 @@ class PersonalStyle:
         embedder: FashionCLIPEmbedder | None = None,
         ensure_schema: bool = True,
     ) -> None:
-        import psycopg
-        from pgvector.psycopg import register_vector
-
         if table != config.STYLE_REFS_TABLE:  # SQL string interpolyasiyası üçün ağ siyahı
             raise ValueError(f"İcazəsiz cədvəl adı: {table!r}")
         self.table = table
+        self.db_url = db_url
         self._embedder = embedder
-        self.conn = psycopg.connect(db_url, autocommit=True)
+        self._lock = threading.RLock()
+        self.conn = self._connect()
         if ensure_schema:
             self._ensure_schema()
-        register_vector(self.conn)
+
+    def _connect(self):
+        import psycopg
+        from pgvector.psycopg import register_vector
+
+        conn = psycopg.connect(self.db_url, autocommit=True, connect_timeout=20)
+        register_vector(conn)
+        return conn
+
+    def _reconnect(self) -> None:
+        try:
+            if getattr(self, "conn", None) is not None and not self.conn.closed:
+                self.conn.close()
+        except Exception:
+            pass
+        self.conn = self._connect()
 
     @property
     def embedder(self) -> FashionCLIPEmbedder:
@@ -128,6 +164,7 @@ class PersonalStyle:
             )
 
     # --- Task 3: referanslar ---------------------------------------------
+    @_reconnecting
     def add_style_refs(
         self,
         user_id: str,
@@ -165,6 +202,7 @@ class PersonalStyle:
             )
         return len(rows)
 
+    @_reconnecting
     def get_refs(
         self, user_id: str, model_ver: str | None = config.MODEL_VER
     ) -> tuple[list[str], np.ndarray]:
@@ -193,6 +231,7 @@ class PersonalStyle:
         vectors = np.stack([_as_array(row[1]) for row in rows])
         return ref_ids, validate_vectors(vectors)
 
+    @_reconnecting
     def list_refs(self, user_id: str) -> list[dict]:
         """Referansların metadata-sı (vektorsuz) — CLI/təftiş üçün."""
         with self.conn.cursor() as cur:
@@ -206,11 +245,13 @@ class PersonalStyle:
                 for r in cur.fetchall()
             ]
 
+    @_reconnecting
     def delete_refs(self, user_id: str) -> int:
         with self.conn.cursor() as cur:
             cur.execute(f"DELETE FROM {self.table} WHERE user_id = %s", (user_id,))
             return cur.rowcount
 
+    @_reconnecting
     def count(self, user_id: str | None = None) -> int:
         with self.conn.cursor() as cur:
             if user_id is None:

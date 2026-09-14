@@ -5,7 +5,7 @@ import { AnalyzingCard, ItemSkeleton } from "@/components/styla/Analyzing";
 import { ItemCard } from "@/components/styla/ItemCard";
 import { UploadZone } from "@/components/styla/UploadZone";
 import { useStyla } from "@/lib/styla/store";
-import { analyzeGarmentPhoto } from "@/lib/styla/mock-api";
+import { analyzeGarmentPhoto } from "@/lib/styla/api";
 import { CATEGORIES, type Category } from "@/lib/styla/types";
 import { cn } from "@/lib/utils";
 

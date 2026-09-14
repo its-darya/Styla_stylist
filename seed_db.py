@@ -1,51 +1,63 @@
-import requests
+"""Seed a wardrobe with product photos from the public Platzi fake-store API.
+
+    python seed_db.py                       # 50 items into demo@styla.app
+    python seed_db.py --count 20 --email you@example.com --password ...
+"""
+import argparse
 import os
 import tempfile
-import time
 
-# 1. Fetch image URLs
-res = requests.get('https://api.escuelajs.co/api/v1/products')
+import requests
+
+from seed_utils import login
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--api", default=os.getenv("STYLA_API", "http://localhost:8000"))
+parser.add_argument("--email", default=os.getenv("STYLA_DEMO_EMAIL", "demo@styla.app"))
+parser.add_argument("--password", default=os.getenv("STYLA_DEMO_PASSWORD", "demo1234"))
+parser.add_argument("--count", type=int, default=50)
+args = parser.parse_args()
+
+headers = login(args.api, args.email, args.password)
+
+res = requests.get("https://api.escuelajs.co/api/v1/products", timeout=30)
 images = []
 if res.status_code == 200:
-    data = res.json()
-    clothes = [p for p in data if 'Clothes' in p['category']['name'] or 'Clothing' in p['category']['name'] or p['category']['id'] == 1]
-    for p in clothes:
-        for img in p['images']:
-            # filter valid urls
-            if img.startswith('http') and '[' not in img and '"' not in img:
-                images.append(img)
+    for p in res.json():
+        name = p.get("category", {}).get("name", "")
+        if "Clothes" in name or "Clothing" in name or p.get("category", {}).get("id") == 1:
+            for img in p.get("images", []):
+                if img.startswith("http") and "[" not in img and '"' not in img:
+                    images.append(img)
 
-print(f"Found {len(images)} images to upload.")
-
-# We don't want to overload the backend or take 10 hours, let's limit to 50
-images = list(set(images))[:50]
+images = list(dict.fromkeys(images))[: args.count]
+print(f"Found {len(images)} images to upload as {args.email}.")
 
 success = 0
 for i, img_url in enumerate(images):
-    print(f"[{i+1}/{len(images)}] Downloading {img_url}...")
+    print(f"[{i + 1}/{len(images)}] {img_url}")
     try:
-        img_res = requests.get(img_url, timeout=10)
+        img_res = requests.get(img_url, timeout=15)
         if img_res.status_code != 200:
             continue
-            
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
             tmp.write(img_res.content)
             tmp_path = tmp.name
-            
-        print(f"[{i+1}/{len(images)}] Uploading to API...")
-        with open(tmp_path, 'rb') as f:
-            files = {'file': (f"seed_{i}.jpg", f, 'image/jpeg')}
-            api_res = requests.post('http://localhost:8000/api/wardrobe/upload', files=files)
-            
+        with open(tmp_path, "rb") as f:
+            api_res = requests.post(
+                f"{args.api}/api/wardrobe/upload",
+                headers=headers,
+                files={"file": (f"seed_{i}.jpg", f, "image/jpeg")},
+                timeout=120,
+            )
         os.remove(tmp_path)
-        
         if api_res.status_code == 200:
-            print(f"[{i+1}/{len(images)}] Success! -> {api_res.json().get('category')} / {api_res.json().get('gender')}")
+            body = api_res.json()
+            print(f"   -> {body.get('color')} {body.get('fineCategory')} / {body.get('gender')}")
             success += 1
         else:
-            print(f"[{i+1}/{len(images)}] API Error: {api_res.text}")
-            
+            print(f"   API error: {api_res.text}")
     except Exception as e:
-        print(f"[{i+1}/{len(images)}] Failed: {e}")
-        
-print(f"Seeding completed. Successfully added {success} items to wardrobe.")
+        print(f"   Failed: {e}")
+
+print(f"Seeding completed. Successfully added {success} items.")

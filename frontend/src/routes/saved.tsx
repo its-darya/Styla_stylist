@@ -20,7 +20,7 @@ export const Route = createFileRoute("/saved")({
 });
 
 function SavedPage() {
-  const { savedLooks, removeLook } = useStyla();
+  const { savedLooks, loadingLooks, removeLook } = useStyla();
 
   return (
     <div className="space-y-8">
@@ -29,7 +29,13 @@ function SavedPage() {
         <h1 className="mt-2 text-4xl md:text-5xl">Your keepers.</h1>
       </header>
 
-      {savedLooks.length === 0 ? (
+      {loadingLooks ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="glass h-72 animate-pulse rounded-3xl" />
+          ))}
+        </div>
+      ) : savedLooks.length === 0 ? (
         <div className="glass rounded-3xl px-6 py-16 text-center">
           <h2 className="font-display text-2xl">No saved looks yet</h2>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -47,7 +53,7 @@ function SavedPage() {
                   variant="ghost"
                   size="icon"
                   className="rounded-full"
-                  onClick={() => removeLook(o.id)}
+                  onClick={() => void removeLook(o.id)}
                   aria-label="Delete look"
                 >
                   <Trash2 className="size-4" />
