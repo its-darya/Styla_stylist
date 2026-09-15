@@ -24,6 +24,9 @@ Pillow
 scipy
 transformers>=4.40
 
+# Web product search for missing reference pieces (ml/retrieval/web_shop.py)
+ddgs>=9.0
+
 # Virtual try-on (HF Spaces client)
 gradio_client
 requests

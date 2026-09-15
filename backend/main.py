@@ -6,7 +6,7 @@ and only touches rows owned by that user:
     /api/auth/*                sign up / sign in / me
     /api/wardrobe              list, upload (analyse), delete garments
     /api/generate              outfit generation (backend/outfits.py)
-    /api/reference/match       reference-look matching (backend/reference.py)
+    /api/reference/match       reference-look matching + web product search (backend/reference.py)
     /api/looks                 saved outfits
     /api/style/personal        personal-style reference photos
     /api/tryon                 virtual try-on
@@ -498,11 +498,8 @@ async def match_reference(
         raise HTTPException(status_code=400, detail="Could not load the reference image")
 
     try:
-        owned = S.db.fetchone(
-            "SELECT count(*) FROM item_embeddings WHERE user_id = %s", (user.id,)
-        )[0]
-        if owned == 0:
-            raise HTTPException(status_code=400, detail="Add garments to your wardrobe first")
+        # An empty wardrobe is fine: every piece is reported as missing, and
+        # the web product search still finds where to buy it.
         return S.reference.match(tmp_path, user.id, source_url=image_url or "")
     finally:
         if tmp_path.exists():

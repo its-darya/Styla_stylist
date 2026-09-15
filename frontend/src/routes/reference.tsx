@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { AnalyzingCard } from "@/components/styla/Analyzing";
 import { UploadZone } from "@/components/styla/UploadZone";
 import { categoryLabel } from "@/components/styla/ItemCard";
-import { useStyla } from "@/lib/styla/store";
 import {
   API_BASE,
   getPinterestFeed,
@@ -17,6 +16,7 @@ import type {
   DetectedPiece,
   PinterestPin,
   ReferenceMatchResult,
+  SuggestedProduct,
   WardrobeItem,
 } from "@/lib/styla/types";
 
@@ -27,7 +27,7 @@ export const Route = createFileRoute("/reference")({
       {
         name: "description",
         content:
-          "Upload an outfit you love and see how much of it you can recreate from your own wardrobe.",
+          "Upload an outfit you love, match it to your wardrobe, and open the real product page on Google.",
       },
       { property: "og:title", content: "Reference Match — Styla" },
       {
@@ -53,8 +53,41 @@ function itemLabel(item: WardrobeItem) {
   return `${item.color} ${fine}`;
 }
 
+function openPage(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function ProductCard({ product }: { product: SuggestedProduct }) {
+  return (
+    <button
+      type="button"
+      onClick={() => openPage(product.url)}
+      className="rounded-2xl bg-secondary/60 p-2 text-left transition hover:-translate-y-0.5"
+    >
+      {product.imageUrl ? (
+        <img
+          src={product.imageUrl}
+          alt={product.name}
+          loading="lazy"
+          className="aspect-square w-full rounded-xl object-cover"
+        />
+      ) : (
+        <div className="flex aspect-square w-full items-center justify-center rounded-xl bg-muted">
+          <ShoppingBag className="size-8 text-muted-foreground" />
+        </div>
+      )}
+      <p className="mt-2 truncate text-sm font-medium">{product.name}</p>
+      <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+        <span className="truncate text-sm text-muted-foreground">{product.price || "Shop"}</span>
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+          Open <ExternalLink className="size-3" />
+        </span>
+      </div>
+    </button>
+  );
+}
+
 function ReferencePage() {
-  const { wardrobe } = useStyla();
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ReferenceMatchResult | null>(null);
@@ -86,19 +119,11 @@ function ReferencePage() {
   }
 
   function handleFile(file: File) {
-    if (!wardrobe.length) {
-      toast.error("Add garments to your wardrobe first");
-      return;
-    }
     setPreview(URL.createObjectURL(file));
     void performMatch(() => matchReferenceImage(file));
   }
 
   function handlePin(pin: PinterestPin) {
-    if (!wardrobe.length) {
-      toast.error("Add garments to your wardrobe first");
-      return;
-    }
     setPreview(pin.imageUrl);
     void performMatch(() => matchReferenceImageUrl(pin.imageUrl));
   }
@@ -113,10 +138,10 @@ function ReferencePage() {
     <div className="space-y-8">
       <header>
         <p className="text-xs uppercase tracking-[0.25em] text-primary">Reference match</p>
-        <h1 className="mt-2 text-4xl md:text-5xl">Recreate a look you saved.</h1>
+        <h1 className="mt-2 text-4xl md:text-5xl">Find the piece, then recreate the look.</h1>
         <p className="mt-3 max-w-xl text-muted-foreground">
-          Pick an outfit. Styla splits it into top, bottom and dress, finds the closest piece you
-          own for each, and points you to shops for whatever is missing.
+          Pick an outfit or upload a photo. Styla splits it into top, bottom and dress, matches
+          what you already own, and finds real store pages for whatever is missing.
         </p>
       </header>
 
@@ -186,9 +211,9 @@ function ReferencePage() {
         <AnalyzingCard
           steps={[
             "Detecting garments in the reference…",
-            "Cutting out each piece…",
-            "Embedding and searching your wardrobe…",
-            "Sourcing suggestions for gaps…",
+            "Matching each piece against your wardrobe…",
+            "Searching the web for missing pieces…",
+            "Finding the closest store pages…",
           ]}
         />
       )}
@@ -226,6 +251,38 @@ function ReferencePage() {
               </div>
             )}
           </section>
+
+          {(result.bestUrl || result.googleShoppingUrl) && (
+            <section className="glass flex flex-wrap items-center justify-between gap-4 rounded-3xl p-5">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-[0.2em] text-primary">Found online</p>
+                <p className="mt-1 font-display text-2xl">
+                  {result.detected
+                    ? `${result.detected.color} ${result.detected.category}`
+                    : "This garment"}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Search: {result.query || "similar clothing"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {result.bestUrl && (
+                  <Button className="rounded-full" onClick={() => openPage(result.bestUrl!)}>
+                    Open product page <ExternalLink className="size-3.5" />
+                  </Button>
+                )}
+                {result.googleShoppingUrl && (
+                  <Button
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => openPage(result.googleShoppingUrl!)}
+                  >
+                    Google Shopping
+                  </Button>
+                )}
+              </div>
+            </section>
+          )}
 
           {result.matchedItems.length > 0 ? (
             <section className="space-y-4">
@@ -295,7 +352,7 @@ function ReferencePage() {
 
           {result.missingItems.length > 0 && (
             <section className="space-y-4">
-              <h2 className="text-2xl">Missing pieces</h2>
+              <h2 className="text-2xl">Missing from your wardrobe</h2>
               {result.missingItems.map((miss, i) => (
                 <div key={i} className="glass rounded-3xl p-4">
                   <div className="flex flex-wrap items-center gap-4">
@@ -323,17 +380,27 @@ function ReferencePage() {
                     )}
                   </div>
                   {miss.suggestedProducts.length > 0 && (
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
-                      <span className="flex items-center gap-1 text-[11px] uppercase tracking-widest text-muted-foreground">
-                        <ShoppingBag className="size-3.5" /> Shop it
-                      </span>
-                      {miss.suggestedProducts.map((p) => (
-                        <Button key={p.url} asChild size="sm" variant="outline" className="rounded-full">
-                          <a href={p.url} target="_blank" rel="noreferrer">
-                            {p.store ?? p.name} <ExternalLink className="size-3" />
-                          </a>
-                        </Button>
-                      ))}
+                    <div className="mt-4 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="flex items-center gap-1 text-[11px] uppercase tracking-widest text-muted-foreground">
+                          <ShoppingBag className="size-3.5" /> Shop this piece
+                        </span>
+                        {miss.googleShoppingUrl && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="rounded-full"
+                            onClick={() => openPage(miss.googleShoppingUrl!)}
+                          >
+                            More on Google Shopping <ExternalLink className="size-3" />
+                          </Button>
+                        )}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {miss.suggestedProducts.map((p, j) => (
+                          <ProductCard key={`${p.url}-${j}`} product={p} />
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

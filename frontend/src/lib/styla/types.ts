@@ -99,6 +99,8 @@ export interface SuggestedProduct {
   price: string;
   url: string;
   store?: string;
+  /** Where a web result came from: google, duckduckgo or google-shopping. */
+  source?: string;
 }
 
 export interface DetectedPiece {
@@ -131,6 +133,9 @@ export interface ReferenceMissing {
   detected?: DetectedPiece;
   closest?: { wardrobeItem: WardrobeItem; matchScore: number } | null;
   suggestedProducts: SuggestedProduct[];
+  /** The web search used to find these products. */
+  query?: string;
+  googleShoppingUrl?: string;
 }
 
 export interface ReferenceMatchResult {
@@ -139,6 +144,17 @@ export interface ReferenceMatchResult {
   matchedItems: ReferenceMatch[];
   missingItems: ReferenceMissing[];
   coverage?: number;
+  // Web product search summary for the primary piece (ml/retrieval/web_shop.py).
+  detected?: {
+    category: string;
+    color: string;
+    pattern: string;
+  };
+  query?: string;
+  googleShoppingUrl?: string;
+  bestUrl?: string;
+  onlineProducts?: SuggestedProduct[];
+  referenceImageUrl?: string;
 }
 
 export interface PinterestPin {

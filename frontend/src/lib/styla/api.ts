@@ -265,7 +265,15 @@ interface RawMatchResponse {
     detected?: ReferenceMatchResult["missingItems"][number]["detected"];
     closest?: { wardrobeItem: RawItem; matchScore: number } | null;
     suggestedProducts: ReferenceMatchResult["missingItems"][number]["suggestedProducts"];
+    query?: string;
+    googleShoppingUrl?: string;
   }[];
+  detected?: ReferenceMatchResult["detected"];
+  query?: string;
+  googleShoppingUrl?: string;
+  bestUrl?: string;
+  onlineProducts?: ReferenceMatchResult["onlineProducts"];
+  referenceImageUrl?: string;
 }
 
 async function postReferenceMatch(formData: FormData): Promise<ReferenceMatchResult> {
@@ -299,12 +307,20 @@ async function postReferenceMatch(formData: FormData): Promise<ReferenceMatchRes
       };
       if (m.slot) entry.slot = m.slot;
       if (m.detected) entry.detected = m.detected;
+      if (m.query) entry.query = m.query;
+      if (m.googleShoppingUrl) entry.googleShoppingUrl = m.googleShoppingUrl;
       return entry;
     }),
   };
   if (data.sourceImageUrl) result.sourceImageUrl = data.sourceImageUrl;
   if (data.pieces) result.pieces = data.pieces;
   if (typeof data.coverage === "number") result.coverage = data.coverage;
+  if (data.detected) result.detected = data.detected;
+  if (data.query) result.query = data.query;
+  if (data.googleShoppingUrl) result.googleShoppingUrl = data.googleShoppingUrl;
+  if (data.bestUrl) result.bestUrl = data.bestUrl;
+  if (data.onlineProducts) result.onlineProducts = data.onlineProducts;
+  if (data.referenceImageUrl) result.referenceImageUrl = data.referenceImageUrl;
   return result;
 }
 

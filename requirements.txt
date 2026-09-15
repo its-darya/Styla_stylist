@@ -23,6 +23,7 @@ pgvector>=0.2.5
 
 # Utilities & Tracking
 python-dotenv>=1.0
+ddgs>=9.0
 tqdm>=4.66
 matplotlib>=3.8
 scikit-learn>=1.4
