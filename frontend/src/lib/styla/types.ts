@@ -57,6 +57,7 @@ export interface SuggestedProduct {
   name: string;
   price: string;
   url: string;
+  source?: string;
 }
 
 export interface ReferenceMatchResult {
@@ -69,5 +70,17 @@ export interface ReferenceMatchResult {
     referenceImageUrl: string;
     category: Category;
     suggestedProducts: SuggestedProduct[];
+    query?: string;
+    googleShoppingUrl?: string;
   }[];
+  detected?: {
+    category: string;
+    color: string;
+    pattern: string;
+  };
+  query?: string;
+  googleShoppingUrl?: string;
+  bestUrl?: string;
+  onlineProducts?: SuggestedProduct[];
+  referenceImageUrl?: string;
 }

@@ -6,7 +6,6 @@
  * ./types.ts are the contract the UI depends on.
  */
 import {
-  CATEGORIES,
   type Category,
   type ReferenceMatchResult,
   type Outfit,
@@ -143,39 +142,17 @@ export async function generateOutfit(style: StyleId, wardrobe: WardrobeItem[]): 
 }
 
 export async function matchReferenceImage(
-  _image: File,
-  wardrobe: WardrobeItem[],
+  image: File,
+  _wardrobe: WardrobeItem[],
 ): Promise<ReferenceMatchResult> {
-  await delay(2800);
-  const matchedSource = sample(wardrobe, Math.min(2, wardrobe.length));
-  const usedCategories = new Set(matchedSource.map((i) => i.category));
-  const missingCategory =
-    CATEGORIES.find((c) => !usedCategories.has(c.id))?.id ?? ("shoes" as Category);
-
-  return {
-    matchedItems: matchedSource.map((wardrobeItem, i) => ({
-      referenceImageUrl: CATALOG[(i * 5 + 2) % CATALOG.length]!.imageUrl,
-      wardrobeItem,
-      matchScore: 72 + Math.floor(Math.random() * 26),
-    })),
-    missingItems: [
-      {
-        referenceImageUrl: img("1543163521-1bf539c55dd2"),
-        category: missingCategory,
-        suggestedProducts: [
-          { imageUrl: img("1560769629-975ec94e6a86", 400), name: "Leather Loafer", price: "$128", url: "#" },
-          { imageUrl: img("1549298916-b41d501d3772", 400), name: "Canvas Low Sneaker", price: "$74", url: "#" },
-          { imageUrl: img("1600185365483-26d7a4cc7519", 400), name: "Runner, Bone", price: "$96", url: "#" },
-        ],
-      },
-      {
-        referenceImageUrl: img("1591047139829-d91aecb6caea"),
-        category: "outerwear",
-        suggestedProducts: [
-          { imageUrl: img("1544022613-e87ca75a784a", 400), name: "Oversized Wool Coat", price: "$210", url: "#" },
-          { imageUrl: img("1520975954732-35dd22299614", 400), name: "Cropped Utility Jacket", price: "$139", url: "#" },
-        ],
-      },
-    ],
-  };
+  const formData = new FormData();
+  formData.append("file", image);
+  const response = await fetch("http://localhost:8000/api/reference/match", {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error(`Reference match failed: ${response.statusText}`);
+  }
+  return response.json();
 }

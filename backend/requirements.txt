@@ -7,6 +7,7 @@ pydantic
 rembg[cpu]
 onnxruntime
 Pillow
+ddgs
 
 psycopg[binary]>=3.1
 pgvector>=0.2.5

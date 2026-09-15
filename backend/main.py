@@ -16,8 +16,10 @@ sys.path.insert(0, str(BASE_DIR))
 
 from ml.vision.background import remove_background
 from ml.retrieval.embedder import FashionCLIPEmbedder
-from ml.retrieval.matcher import CategoryClassifier, ColorClassifier, PatternClassifier
+from ml.retrieval.matcher import CategoryClassifier, ColorClassifier, Matcher, PatternClassifier
+from ml.retrieval.search import Searcher
 from ml.retrieval.store.pg_store import PgStore
+from ml.retrieval.web_shop import search_similar_products
 
 # Qlobal ML modellər və DB bağlantısı
 embedder = None
@@ -114,6 +116,40 @@ class UploadResponse(BaseModel):
     color: str
     pattern: str
 
+
+def _to_frontend_category(cat: str | None) -> str:
+    cat = (cat or "top").lower()
+    if cat in {"pants", "jeans", "shorts", "skirt"}:
+        return "bottom"
+    if cat == "dress":
+        return "dress"
+    if cat in {"jacket", "coat"}:
+        return "outerwear"
+    if cat in {"shoes", "boots"}:
+        return "shoes"
+    return "top"
+
+
+def _public_image_url(path: str | None, item_id: str | None = None) -> str:
+    if path and path.startswith("http"):
+        return path
+    if path and path.startswith("/"):
+        return f"http://localhost:8000{path}"
+    if item_id:
+        return f"http://localhost:8000/data/images/{item_id}.png"
+    return ""
+
+
+def _wardrobe_payload(item_id: str, meta: dict) -> dict:
+    return {
+        "id": item_id,
+        "imageUrl": _public_image_url(meta.get("image_path"), item_id),
+        "category": _to_frontend_category(meta.get("category")),
+        "color": meta.get("color") or "Unknown",
+        "pattern": meta.get("pattern") or "Solid",
+        "dateAdded": None,
+    }
+
 @app.post("/api/wardrobe/upload", response_model=UploadResponse)
 async def upload_wardrobe_item(file: UploadFile = File(...)):
     if not embedder or not classifier or not color_classifier or not pattern_classifier or not store:
@@ -167,5 +203,82 @@ async def upload_wardrobe_item(file: UploadFile = File(...)):
         )
     finally:
         # Təmizlik (orijinal şəkli silirik, ancaq şəffafı DB üçün saxlayırıq)
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
+@app.post("/api/reference/match")
+async def match_reference_outfit(file: UploadFile = File(...)):
+    """Match a reference garment against the wardrobe, then shop the web for it."""
+    if not embedder or not classifier or not color_classifier or not pattern_classifier or not store:
+        raise HTTPException(status_code=500, detail="ML Models are not initialized")
+
+    item_id = str(uuid.uuid4())
+    tmp_dir = BASE_DIR / "tmp" / "reference"
+    data_img_dir = BASE_DIR / "data" / "images"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    data_img_dir.mkdir(parents=True, exist_ok=True)
+
+    tmp_path = tmp_dir / f"{item_id}_{file.filename}"
+    out_path = data_img_dir / f"ref_{item_id}.png"
+
+    with open(tmp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    try:
+        try:
+            remove_background(tmp_path, out_path, background="transparent")
+        except Exception:
+            shutil.copyfile(tmp_path, out_path)
+
+        vector = embedder.embed_images([out_path])[0]
+        category, _cat_prob = classifier.classify_vector(vector)
+        color, _col_prob = color_classifier.classify_vector(vector)
+        pattern, _pat_prob = pattern_classifier.classify_vector(vector)
+
+        searcher = Searcher(store=store, embedder=embedder)
+        matcher = Matcher(searcher=searcher)
+        match = matcher.match_item(image=out_path, vector=vector)
+
+        query, google_url, products = search_similar_products(color, category, pattern, n=3)
+        reference_image_url = _public_image_url(f"/data/images/ref_{item_id}.png")
+        frontend_category = _to_frontend_category(category)
+
+        matched_items = []
+        missing_items = []
+        if match.status == "matched" and match.best_match_id:
+            matched_items.append(
+                {
+                    "referenceImageUrl": reference_image_url,
+                    "wardrobeItem": _wardrobe_payload(match.best_match_id, match.best_match_meta),
+                    "matchScore": int(round(match.score * 100)),
+                }
+            )
+        else:
+            missing_items.append(
+                {
+                    "referenceImageUrl": reference_image_url,
+                    "category": frontend_category,
+                    "suggestedProducts": products,
+                    "query": query,
+                    "googleShoppingUrl": google_url,
+                }
+            )
+
+        return {
+            "matchedItems": matched_items,
+            "missingItems": missing_items,
+            "detected": {
+                "category": category,
+                "color": color,
+                "pattern": pattern,
+            },
+            "query": query,
+            "googleShoppingUrl": google_url,
+            "bestUrl": products[0]["url"] if products else google_url,
+            "onlineProducts": products,
+            "referenceImageUrl": reference_image_url,
+        }
+    finally:
         if tmp_path.exists():
             tmp_path.unlink()
