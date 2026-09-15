@@ -13,8 +13,10 @@ low and often wrong. This version follows the README pipeline:
    pattern, fine category restricted to the crop's slot).
 3. Search only the user's wardrobe items in the same slot, re-rank with
    colour / pattern agreement, and decide matched vs. missing per piece.
-4. For missing pieces, return shop-search links built from the detected
-   description (e.g. "black skirt").
+4. For missing pieces, find real store pages with a web product search
+   (ml/retrieval/web_shop.py: Google Programmable Search, then DuckDuckGo
+   shopping, then a Google Shopping link), falling back to shop-search links
+   built from the detected description (e.g. "black skirt") if it fails.
 
 If segmentation finds no garment (flat-lay photo of a single item), the
 whole image is background-removed and treated as one piece.
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import urllib.parse
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +33,7 @@ import numpy as np
 from PIL import Image
 
 from ml.retrieval.store.base import SearchResult
+from ml.retrieval.web_shop import google_shopping_url, search_similar_products
 from ml.vision.background import remove_background
 from ml.vision.segmentation import ParsedGarment, parse_outfit
 
@@ -60,6 +64,31 @@ SHOP_LINKS = [
     ("ASOS", "https://www.asos.com/search/?q={q}"),
     ("Zara", "https://www.zara.com/us/en/search?searchTerm={q}"),
 ]
+# Store results per missing piece from the web product search.
+WEB_RESULTS = 3
+
+
+def _search_links(query: str, image_url: str) -> list[dict[str, str]]:
+    """Plain shop-search links, shown when the web product search fails."""
+    return [
+        {
+            "name": query.title(),
+            "store": store_name,
+            "price": "",
+            "imageUrl": image_url,
+            "url": url.format(q=urllib.parse.quote_plus(query)),
+        }
+        for store_name, url in SHOP_LINKS
+    ]
+
+
+def _web_search(color: str, category: str, pattern: str):
+    """(query, google_shopping_url, products), or None. Never raises."""
+    try:
+        return search_similar_products(color, category, pattern, n=WEB_RESULTS)
+    except Exception as exc:  # a network failure must not break matching
+        print(f"[reference] web product search failed: {exc}")
+        return None
 
 
 def to_percent(cosine: float) -> int:
@@ -217,18 +246,58 @@ class ReferenceMatcher:
                         "category": piece.slot if piece.slot != "top" else coarse_category(fine),
                         "detected": detected,
                         "closest": closest,
-                        "suggestedProducts": [
-                            {
-                                "name": query.title(),
-                                "store": store_name,
-                                "price": "",
-                                "imageUrl": crop_url,
-                                "url": url.format(q=urllib.parse.quote_plus(query)),
-                            }
-                            for store_name, url in SHOP_LINKS
-                        ],
+                        # Replaced by real store results below when the web
+                        # search succeeds.
+                        "suggestedProducts": _search_links(query, crop_url),
+                        "query": query,
+                        "googleShoppingUrl": google_shopping_url(query),
+                        "_search": (color, fine, pattern),
                     }
                 )
+
+        # Web product search, run concurrently since each lookup is a network
+        # round trip. Every missing piece gets store results; when nothing is
+        # missing the first piece is still looked up, so a look the user
+        # already owns can be shopped as well.
+        searches = [m.pop("_search") for m in missing]
+        if not searches and parsed:
+            first = parsed[0]
+            searches = [(first["color"], first["category"], first["pattern"])]
+        found: list[Any] = []
+        if searches:
+            with ThreadPoolExecutor(max_workers=min(4, len(searches))) as pool:
+                found = list(pool.map(lambda args: _web_search(*args), searches))
+
+        for item, result in zip(missing, found):
+            if result:
+                item["query"], item["googleShoppingUrl"], products = result
+                if products:
+                    item["suggestedProducts"] = products
+
+        # One-garment summary for the page's "Found online" panel.
+        summary: dict[str, Any] = {}
+        if missing:
+            head = missing[0]
+            products = head["suggestedProducts"]
+            summary = {
+                "detected": {k: head["detected"][k] for k in ("category", "color", "pattern")},
+                "query": head["query"],
+                "googleShoppingUrl": head["googleShoppingUrl"],
+                "onlineProducts": products,
+                "bestUrl": products[0]["url"] if products else head["googleShoppingUrl"],
+                "referenceImageUrl": head["referenceImageUrl"],
+            }
+        elif parsed and found and found[0]:
+            query, shop_url, products = found[0]
+            first = parsed[0]
+            summary = {
+                "detected": {k: first[k] for k in ("category", "color", "pattern")},
+                "query": query,
+                "googleShoppingUrl": shop_url,
+                "onlineProducts": products,
+                "bestUrl": products[0]["url"] if products else shop_url,
+                "referenceImageUrl": first["imageUrl"],
+            }
 
         total = len(pieces)
         return {
@@ -237,4 +306,5 @@ class ReferenceMatcher:
             "matchedItems": matched,
             "missingItems": missing,
             "coverage": round(len(matched) / total, 3) if total else 0.0,
+            **summary,
         }
