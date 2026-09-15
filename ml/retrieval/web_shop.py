@@ -1,7 +1,7 @@
 """Find a garment on the public web and return store pages.
 
 Prefers Google Programmable Search when GOOGLE_API_KEY + GOOGLE_CSE_ID are set.
-Falls back to DuckDuckGo shopping/text results so the feature works without keys.
+Falls back to DuckDuckGo image/text results so the feature works without keys.
 If both fail, returns a Google Shopping search URL so the user still lands on Google.
 """
 from __future__ import annotations
@@ -122,10 +122,17 @@ def _ddg_shopping(query: str, n: int) -> list[dict[str, str]]:
     raw: list[dict[str, Any]] = []
     try:
         with DDGS() as ddgs:
-            raw = list(ddgs.shopping(query, max_results=n + 4) or [])
+            # ddgs 9 removed `shopping`. Image results carry a picture and the
+            # page it came from, which is what a product card needs; older
+            # releases that still have `shopping` keep using it.
+            search = getattr(ddgs, "shopping", None) or ddgs.images
+            raw = list(search(query, max_results=n + 4) or [])
             if len(raw) < n:
                 raw.extend(list(ddgs.text(query, max_results=n) or []))
-    except Exception:
+    except Exception as exc:
+        # Log rather than swallow silently: a quiet empty result is how the
+        # missing `shopping` method went unnoticed.
+        print(f"[web_shop] DuckDuckGo search failed: {exc}")
         return []
 
     products: list[dict[str, str]] = []
