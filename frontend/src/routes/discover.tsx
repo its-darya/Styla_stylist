@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Eye, Heart, MapPin } from "lucide-react";
+import { Eye, Heart, Plus, Undo2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,14 +19,24 @@ export const Route = createFileRoute("/discover")({
 
 const ALL = "All";
 const LIKES_KEY = "styla.discover.likes";
+const HIDDEN_KEY = "styla.discover.hidden";
 
-function readLikes(): string[] {
+/** Ids remembered in this browser; a blocked storage box just reads empty. */
+function readIds(key: string): string[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = JSON.parse(window.localStorage.getItem(LIKES_KEY) ?? "[]");
+    const raw = JSON.parse(window.localStorage.getItem(key) ?? "[]");
     return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
   } catch {
     return [];
+  }
+}
+
+function writeIds(key: string, ids: string[]) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(ids));
+  } catch {
+    // Losing the list only costs the remembered hearts and hidden looks.
   }
 }
 
@@ -35,20 +45,30 @@ function DiscoverPage() {
   const [active, setActive] = useState(ALL);
   const [zoomed, setZoomed] = useState<DiscoverPost | null>(null);
   const [liked, setLiked] = useState<string[]>([]);
+  const [hidden, setHidden] = useState<string[]>([]);
+  const [showRemoved, setShowRemoved] = useState(false);
 
-  // Likes are read after mount so the server-rendered markup matches.
-  useEffect(() => setLiked(readLikes()), []);
+  // Read after mount, so the server-rendered markup matches the first paint.
+  useEffect(() => {
+    setLiked(readIds(LIKES_KEY));
+    setHidden(readIds(HIDDEN_KEY));
+  }, []);
 
   const styles = useMemo(() => [ALL, ...Array.from(new Set(posts.map((p) => p.style)))], []);
-  const visible = active === ALL ? posts : posts.filter((p) => p.style === active);
 
-  function persist(ids: string[]) {
+  const inView = posts.filter((p) =>
+    showRemoved ? hidden.includes(p.id) : !hidden.includes(p.id),
+  );
+  const visible = active === ALL ? inView : inView.filter((p) => p.style === active);
+
+  function saveLiked(ids: string[]) {
     setLiked(ids);
-    try {
-      window.localStorage.setItem(LIKES_KEY, JSON.stringify(ids));
-    } catch {
-      // A blocked storage box only costs the remembered hearts.
-    }
+    writeIds(LIKES_KEY, ids);
+  }
+
+  function saveHidden(ids: string[]) {
+    setHidden(ids);
+    writeIds(HIDDEN_KEY, ids);
   }
 
   /** Hand the look to Reference, which matches it against the wardrobe. */
@@ -61,11 +81,26 @@ function DiscoverPage() {
   /** Liking sends the look straight to Reference; unliking just forgets it. */
   function toggleLike(post: DiscoverPost) {
     if (liked.includes(post.id)) {
-      persist(liked.filter((id) => id !== post.id));
+      saveLiked(liked.filter((id) => id !== post.id));
       return;
     }
-    persist([...liked, post.id]);
+    saveLiked([...liked, post.id]);
     checkInReference(post);
+  }
+
+  function removeLook(post: DiscoverPost) {
+    setZoomed(null);
+    saveHidden([...hidden, post.id]);
+    toast("Removed from Discover", {
+      action: { label: "Undo", onClick: () => saveHidden(hidden.filter((id) => id !== post.id)) },
+    });
+  }
+
+  function restoreLook(post: DiscoverPost) {
+    const left = hidden.filter((id) => id !== post.id);
+    saveHidden(left);
+    if (left.length === 0) setShowRemoved(false);
+    toast.success("Added back to Discover");
   }
 
   return (
@@ -74,7 +109,8 @@ function DiscoverPage() {
         <p className="text-xs uppercase tracking-[0.25em] text-primary">Inspiration</p>
         <h1 className="mt-4 text-4xl md:text-5xl font-display tracking-tight">Discover Styles</h1>
         <p className="mt-4 max-w-xl mx-auto text-muted-foreground text-base">
-          Tap a look to see it bigger, or like it to check it against your wardrobe.
+          Tap a look to see it bigger, like it to check it against your wardrobe, or remove the ones
+          you don&apos;t want to see.
         </p>
       </header>
 
@@ -97,9 +133,39 @@ function DiscoverPage() {
         ))}
       </div>
 
+      {/* Only shown once something has been removed */}
+      {hidden.length > 0 && (
+        <div className="flex flex-wrap items-center justify-center gap-2 text-sm">
+          <span className="text-muted-foreground">
+            {hidden.length} look{hidden.length === 1 ? "" : "s"} removed
+          </span>
+          <Button
+            size="sm"
+            variant={showRemoved ? "default" : "outline"}
+            className="rounded-full"
+            onClick={() => setShowRemoved((on) => !on)}
+          >
+            {showRemoved ? "Back to Discover" : "Show removed"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="rounded-full"
+            onClick={() => {
+              saveHidden([]);
+              setShowRemoved(false);
+              toast.success("All looks are back");
+            }}
+          >
+            <Undo2 className="size-3.5" /> Add all back
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-8">
         {visible.map((post) => {
           const isLiked = liked.includes(post.id);
+          const isRemoved = hidden.includes(post.id);
           return (
             <div key={post.id} className="group relative">
               <button
@@ -112,9 +178,34 @@ function DiscoverPage() {
                   src={post.imageUrl}
                   alt={`${post.style} look`}
                   loading="lazy"
-                  className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.03]"
+                  className={cn(
+                    "h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.03]",
+                    isRemoved && "opacity-50",
+                  )}
                 />
               </button>
+
+              {isRemoved ? (
+                <button
+                  type="button"
+                  onClick={() => restoreLook(post)}
+                  aria-label="Add this look back to Discover"
+                  title="Add back to Discover"
+                  className="absolute left-2 top-2 grid size-8 place-items-center rounded-full bg-white/85 shadow-sm backdrop-blur transition hover:bg-white"
+                >
+                  <Plus className="size-4 text-primary" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => removeLook(post)}
+                  aria-label="Remove this look from Discover"
+                  title="Remove from Discover"
+                  className="absolute left-2 top-2 grid size-8 place-items-center rounded-full bg-white/85 opacity-0 shadow-sm backdrop-blur transition hover:bg-white focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <X className="size-4 text-foreground/60" />
+                </button>
+              )}
 
               <button
                 type="button"
@@ -128,13 +219,9 @@ function DiscoverPage() {
                 />
               </button>
 
-              <p className="mt-2 truncate text-sm font-medium text-foreground">{post.style}</p>
-              <div className="mt-0.5 flex items-center justify-between gap-1 text-[11px] text-muted-foreground">
-                <span className="flex min-w-0 items-center">
-                  <MapPin className="mr-0.5 size-3 shrink-0" />
-                  <span className="truncate">{post.location}</span>
-                </span>
-                <span className="flex shrink-0 items-center">
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="truncate text-sm font-medium text-foreground">{post.style}</p>
+                <span className="flex shrink-0 items-center text-[11px] text-muted-foreground">
                   <Eye className="mr-0.5 size-3" />
                   {post.views}
                 </span>
@@ -143,6 +230,14 @@ function DiscoverPage() {
           );
         })}
       </div>
+
+      {visible.length === 0 && (
+        <p className="py-10 text-center text-sm text-muted-foreground">
+          {showRemoved
+            ? "Nothing removed in this style."
+            : "Every look in this style is removed. Use “Show removed” to bring one back."}
+        </p>
+      )}
 
       {/* Bigger view */}
       <Dialog open={zoomed !== null} onOpenChange={(open) => !open && setZoomed(null)}>
@@ -158,17 +253,28 @@ function DiscoverPage() {
                 className="max-h-[65vh] w-full rounded-2xl bg-white object-contain"
               />
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center">
-                    <MapPin className="mr-1 size-3.5" />
-                    {zoomed.location}
-                  </span>
-                  <span className="flex items-center">
-                    <Eye className="mr-1 size-3.5" />
-                    {zoomed.views}
-                  </span>
-                </div>
+                <span className="flex items-center text-xs text-muted-foreground">
+                  <Eye className="mr-1 size-3.5" />
+                  {zoomed.views}
+                </span>
                 <div className="flex flex-wrap gap-2">
+                  {hidden.includes(zoomed.id) ? (
+                    <Button
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => restoreLook(zoomed)}
+                    >
+                      <Plus className="size-4" /> Add back
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => removeLook(zoomed)}
+                    >
+                      <X className="size-4" /> Remove
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     className="rounded-full"
