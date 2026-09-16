@@ -133,8 +133,10 @@ async def lifespan(app: FastAPI):
         category_classifier=S.categories,
         color_classifier=S.colors,
         pattern_classifier=S.patterns,
+        gender_classifier=S.genders,
         crops_dir=DATA_DIR / "reference",
         public_url=public_url,
+        item_image_url=_item_image_url,
     )
     try:
         from ml.vision.segmentation import _ensure_loaded as load_segformer
@@ -158,9 +160,20 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+# A browser refuses a credentialed request whose server answers "*", so the
+# allowed sites are named instead: the local dev server, whatever FRONTEND_URL
+# points at, plus anything listed in ALLOWED_ORIGINS (comma-separated). The
+# regex covers Netlify's per-deploy preview subdomains.
+_ALLOWED_ORIGINS = {FRONTEND_URL, "http://localhost:5173", "http://127.0.0.1:5173"}
+_ALLOWED_ORIGINS.update(
+    origin.strip().rstrip("/")
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=sorted(o for o in _ALLOWED_ORIGINS if o),
+    allow_origin_regex=r"https://[a-z0-9-]+--[a-z0-9-]+\.netlify\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

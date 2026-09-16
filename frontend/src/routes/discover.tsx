@@ -1,78 +1,196 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Eye } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Eye, Heart, MapPin } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { LOOKS as posts, type Look as DiscoverPost } from "@/lib/styla/looks";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/discover")({
   head: () => ({
     meta: [
-      { title: "Discover \u2014 Styla" },
+      { title: "Discover — Styla" },
       { name: "description", content: "Get inspired by the community's fashion combinations." },
     ],
   }),
   component: DiscoverPage,
 });
 
-interface DiscoverPost {
-  id: string;
-  imageUrl: string;
-  author: string;
-  style: string;
-  views: string;
+const ALL = "All";
+const LIKES_KEY = "styla.discover.likes";
+
+function readLikes(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(LIKES_KEY) ?? "[]");
+    return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
-const mockPosts: DiscoverPost[] = [
-  { id: "1",  imageUrl: "https://images.pexels.com/photos/27641316/pexels-photo-27641316.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Maria",   style: "Casual Chic",     views: "2.6m" },
-  { id: "2",  imageUrl: "https://images.pexels.com/photos/31046830/pexels-photo-31046830.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Abi",      style: "Minimalist",      views: "2.5m" },
-  { id: "3",  imageUrl: "https://images.pexels.com/photos/29398132/pexels-photo-29398132.jpeg?auto=compress&cs=tinysrgb&w=600", author: "saisho",   style: "Y2K",             views: "1.7m" },
-  { id: "4",  imageUrl: "https://images.pexels.com/photos/31046829/pexels-photo-31046829.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Mona",     style: "Streetwear",      views: "1.1m" },
-  { id: "5",  imageUrl: "https://images.pexels.com/photos/31046827/pexels-photo-31046827.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Katie",    style: "Preppy",          views: "1.8m" },
-  { id: "6",  imageUrl: "https://images.pexels.com/photos/30381008/pexels-photo-30381008.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Stine",    style: "Vintage",         views: "1.8m" },
-  { id: "7",  imageUrl: "https://images.pexels.com/photos/31046841/pexels-photo-31046841.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Yuki",     style: "Boho",            views: "900k" },
-  { id: "8",  imageUrl: "https://images.pexels.com/photos/30590661/pexels-photo-30590661.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Elena",    style: "Elegant",         views: "3.2m" },
-  { id: "9",  imageUrl: "https://images.pexels.com/photos/13568592/pexels-photo-13568592.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Chloe",    style: "Business Casual", views: "1.5m" },
-  { id: "10", imageUrl: "https://images.pexels.com/photos/13568611/pexels-photo-13568611.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Sofia",    style: "Edgy",            views: "2.1m" },
-  { id: "11", imageUrl: "https://images.pexels.com/photos/27542890/pexels-photo-27542890.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Lina",     style: "Sporty",          views: "1.4m" },
-  { id: "12", imageUrl: "https://images.pexels.com/photos/27383816/pexels-photo-27383816.jpeg?auto=compress&cs=tinysrgb&w=600", author: "Ayla",     style: "Formal",          views: "2.8m" },
-];
-
 function DiscoverPage() {
+  const navigate = useNavigate();
+  const [active, setActive] = useState(ALL);
+  const [zoomed, setZoomed] = useState<DiscoverPost | null>(null);
+  const [liked, setLiked] = useState<string[]>([]);
+
+  // Likes are read after mount so the server-rendered markup matches.
+  useEffect(() => setLiked(readLikes()), []);
+
+  const styles = useMemo(() => [ALL, ...Array.from(new Set(posts.map((p) => p.style)))], []);
+  const visible = active === ALL ? posts : posts.filter((p) => p.style === active);
+
+  function persist(ids: string[]) {
+    setLiked(ids);
+    try {
+      window.localStorage.setItem(LIKES_KEY, JSON.stringify(ids));
+    } catch {
+      // A blocked storage box only costs the remembered hearts.
+    }
+  }
+
+  /** Hand the look to Reference, which matches it against the wardrobe. */
+  function checkInReference(post: DiscoverPost) {
+    setZoomed(null);
+    toast.success("Checking this look against your wardrobe");
+    void navigate({ to: "/reference", search: { image: post.imageUrl } });
+  }
+
+  /** Liking sends the look straight to Reference; unliking just forgets it. */
+  function toggleLike(post: DiscoverPost) {
+    if (liked.includes(post.id)) {
+      persist(liked.filter((id) => id !== post.id));
+      return;
+    }
+    persist([...liked, post.id]);
+    checkInReference(post);
+  }
+
   return (
-    <div className="space-y-10 pb-12">
+    <div className="space-y-8 pb-12">
       <header className="text-center pt-8 pb-2">
         <p className="text-xs uppercase tracking-[0.25em] text-primary">Inspiration</p>
         <h1 className="mt-4 text-4xl md:text-5xl font-display tracking-tight">Discover Styles</h1>
         <p className="mt-4 max-w-xl mx-auto text-muted-foreground text-base">
-          Get inspired by the community. Find your next signature look.
+          Tap a look to see it bigger, or like it to check it against your wardrobe.
         </p>
       </header>
 
-      {/* altadaily-style grid: clean bg cards, name + views below */}
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-8">
-        {mockPosts.map((post) => (
-          <div key={post.id} className="group cursor-pointer">
-            {/* Image — neutral bg like altadaily lookbook */}
-            <div className="relative bg-[#f3f3f3] rounded-lg overflow-hidden aspect-[3/4.5] transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5">
-              <img
-                src={post.imageUrl}
-                alt={`Outfit by ${post.author}`}
-                loading="lazy"
-                className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-[1.03]"
-              />
-            </div>
-
-            {/* Info below — altadaily layout */}
-            <div className="mt-2 flex items-start justify-between gap-1">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{post.author}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">{post.style}</p>
-              </div>
-              <span className="flex items-center shrink-0 text-[11px] text-muted-foreground mt-0.5">
-                <Eye className="w-3 h-3 mr-0.5" />
-                {post.views}
-              </span>
-            </div>
-          </div>
+      {/* Style filter pills, the active one filled */}
+      <div className="flex flex-wrap justify-center gap-2">
+        {styles.map((style) => (
+          <button
+            key={style}
+            type="button"
+            onClick={() => setActive(style)}
+            className={cn(
+              "rounded-full border px-4 py-1.5 text-sm transition",
+              style === active
+                ? "border-foreground bg-foreground text-background"
+                : "border-border text-muted-foreground hover:border-foreground hover:text-foreground",
+            )}
+          >
+            {style}
+          </button>
         ))}
       </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-8">
+        {visible.map((post) => {
+          const isLiked = liked.includes(post.id);
+          return (
+            <div key={post.id} className="group relative">
+              <button
+                type="button"
+                onClick={() => setZoomed(post)}
+                aria-label={`See this ${post.style} look bigger`}
+                className="block w-full overflow-hidden rounded-lg bg-white aspect-[3/5] transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5"
+              >
+                <img
+                  src={post.imageUrl}
+                  alt={`${post.style} look`}
+                  loading="lazy"
+                  className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.03]"
+                />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => toggleLike(post)}
+                aria-label={isLiked ? "Remove like" : "Like and check in Reference"}
+                title={isLiked ? "Remove like" : "Like and check in Reference"}
+                className="absolute right-2 top-2 grid size-8 place-items-center rounded-full bg-white/85 shadow-sm backdrop-blur transition hover:bg-white"
+              >
+                <Heart
+                  className={cn("size-4", isLiked ? "fill-primary text-primary" : "text-foreground/60")}
+                />
+              </button>
+
+              <p className="mt-2 truncate text-sm font-medium text-foreground">{post.style}</p>
+              <div className="mt-0.5 flex items-center justify-between gap-1 text-[11px] text-muted-foreground">
+                <span className="flex min-w-0 items-center">
+                  <MapPin className="mr-0.5 size-3 shrink-0" />
+                  <span className="truncate">{post.location}</span>
+                </span>
+                <span className="flex shrink-0 items-center">
+                  <Eye className="mr-0.5 size-3" />
+                  {post.views}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bigger view */}
+      <Dialog open={zoomed !== null} onOpenChange={(open) => !open && setZoomed(null)}>
+        <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">{zoomed?.style}</DialogTitle>
+          </DialogHeader>
+          {zoomed && (
+            <>
+              <img
+                src={zoomed.imageUrl}
+                alt={`${zoomed.style} look`}
+                className="max-h-[65vh] w-full rounded-2xl bg-white object-contain"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center">
+                    <MapPin className="mr-1 size-3.5" />
+                    {zoomed.location}
+                  </span>
+                  <span className="flex items-center">
+                    <Eye className="mr-1 size-3.5" />
+                    {zoomed.views}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => toggleLike(zoomed)}
+                  >
+                    <Heart
+                      className={cn(
+                        "size-4",
+                        liked.includes(zoomed.id) ? "fill-primary text-primary" : "",
+                      )}
+                    />
+                    {liked.includes(zoomed.id) ? "Liked" : "Like"}
+                  </Button>
+                  <Button className="rounded-full" onClick={() => checkInReference(zoomed)}>
+                    Check in Reference
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

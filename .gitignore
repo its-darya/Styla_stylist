@@ -28,6 +28,8 @@ frontend/dist-ssr/
 frontend/.output/
 frontend/.nitro/
 frontend/.tanstack/
+frontend/.netlify/
+frontend/.wrangler/
 .npm/
 *.log
 npm-debug.log*
@@ -70,7 +72,12 @@ Thumbs.db
 
 # Data
 data/raw/
-data/images/
+# Wardrobe photos ship with the repo so a deployed instance has the seeded
+# wardrobe: the per-item photo the Wardrobe page shows and the cut-out the
+# Reference page matches against. The pre-cut-out backups stay out (below).
+data/images/*
+!data/images/*.png
+!data/images/garments/
 
 # ML / Media
 ml/media/*

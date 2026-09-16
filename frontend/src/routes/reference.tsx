@@ -1,8 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { ArrowRight, ExternalLink, Link2, ShoppingBag } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, ExternalLink, Link2, Maximize2, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { AnalyzingCard } from "@/components/styla/Analyzing";
 import { UploadZone } from "@/components/styla/UploadZone";
 import { categoryLabel } from "@/components/styla/ItemCard";
@@ -12,6 +19,7 @@ import {
   matchReferenceImage,
   matchReferenceImageUrl,
 } from "@/lib/styla/api";
+import { LOOKS } from "@/lib/styla/looks";
 import type {
   DetectedPiece,
   PinterestPin,
@@ -35,6 +43,10 @@ export const Route = createFileRoute("/reference")({
         content: "Match a saved inspiration look against your closet and shop only what's missing.",
       },
     ],
+  }),
+  // ?image=… lets Discover hand a look straight over to be checked.
+  validateSearch: (search: Record<string, unknown>) => ({
+    image: typeof search["image"] === "string" ? search["image"] : undefined,
   }),
   component: ReferencePage,
 });
@@ -87,12 +99,122 @@ function ProductCard({ product }: { product: SuggestedProduct }) {
   );
 }
 
+/**
+ * One piece of the reference that the wardrobe can cover: the photo's garment
+ * beside the one you own. Opens full size, with a way through to the wardrobe.
+ */
+function MatchedCard({
+  match,
+  preview,
+}: {
+  match: ReferenceMatchResult["matchedItems"][number];
+  preview: string | null;
+}) {
+  const item = match.wardrobeItem;
+  const picture = item.thumbnailUrl ?? item.imageUrl;
+  const referencePicture = match.referenceImageUrl || preview || "";
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="glass rounded-3xl p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg"
+        >
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <img
+              src={referencePicture}
+              alt="Reference piece"
+              className="aspect-[3/4] w-full rounded-2xl bg-white object-contain"
+            />
+            <ArrowRight className="size-4 shrink-0 text-primary" />
+            <img
+              src={picture}
+              alt={itemLabel(item)}
+              className="aspect-[3/4] w-full rounded-2xl bg-white object-contain"
+            />
+          </div>
+          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{itemLabel(item)}</p>
+              {match.detected && (
+                <p className="truncate text-xs text-muted-foreground">
+                  Looking for: {describe(match.detected)}
+                </p>
+              )}
+            </div>
+            <span className="shrink-0 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-primary">
+              {match.matchScore}% match
+            </span>
+          </div>
+          {match.alternates && match.alternates.length > 0 && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                Also close
+              </span>
+              {match.alternates.map((a) => (
+                <div key={a.wardrobeItem.id} className="flex items-center gap-1.5">
+                  <img
+                    src={a.wardrobeItem.thumbnailUrl ?? a.wardrobeItem.imageUrl}
+                    alt={itemLabel(a.wardrobeItem)}
+                    title={itemLabel(a.wardrobeItem)}
+                    className="size-10 rounded-lg bg-white object-contain"
+                  />
+                  <span className="text-[11px] text-muted-foreground">{a.matchScore}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="mt-3 flex items-center gap-1 text-[11px] uppercase tracking-widest text-muted-foreground">
+            <Maximize2 className="size-3" /> Tap to see it bigger
+          </p>
+        </button>
+      </DialogTrigger>
+
+      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto rounded-3xl">
+        <DialogHeader>
+          <DialogTitle className="font-display text-2xl">{itemLabel(item)}</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <figure>
+            <img
+              src={referencePicture}
+              alt="Reference piece"
+              className="max-h-[55vh] w-full rounded-2xl bg-white object-contain"
+            />
+            <figcaption className="mt-2 text-center text-xs text-muted-foreground">
+              In the photo{match.detected ? `: ${describe(match.detected)}` : ""}
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src={picture}
+              alt={itemLabel(item)}
+              className="max-h-[55vh] w-full rounded-2xl bg-white object-contain"
+            />
+            <figcaption className="mt-2 text-center text-xs text-muted-foreground">
+              Yours: {itemLabel(item)} · {match.matchScore}% match
+            </figcaption>
+          </figure>
+        </div>
+        <Button asChild className="rounded-full">
+          <Link to="/">
+            Open this in my wardrobe <ArrowRight className="size-3.5" />
+          </Link>
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ReferencePage() {
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ReferenceMatchResult | null>(null);
   const [pins, setPins] = useState<PinterestPin[]>([]);
   const [loadingPins, setLoadingPins] = useState(true);
+  const { image: handedOver } = Route.useSearch() as { image?: string };
+  const checked = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -118,14 +240,35 @@ function ReferencePage() {
     }
   }
 
+  /** Check a picture by address: a curated look, a pin, or a Discover hand-off. */
+  function checkImage(url: string) {
+    setPreview(url);
+    void performMatch(async () => {
+      try {
+        // Pictures this site serves are sent as bytes, so the API never has to
+        // reach back into the frontend to download them.
+        const blob = await (await fetch(url)).blob();
+        const name = url.split("/").pop() || "look.jpg";
+        return await matchReferenceImage(new File([blob], name, { type: blob.type || "image/jpeg" }));
+      } catch {
+        // A remote pin: hand the API the address instead.
+        return matchReferenceImageUrl(new URL(url, window.location.origin).href);
+      }
+    });
+  }
+
+  // A look liked in Discover arrives as ?image=… and is checked on arrival.
+  useEffect(() => {
+    if (!handedOver || checked.current === handedOver) return;
+    checked.current = handedOver;
+    checkImage(handedOver);
+    // checkImage only touches state setters, so the look is what matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handedOver]);
+
   function handleFile(file: File) {
     setPreview(URL.createObjectURL(file));
     void performMatch(() => matchReferenceImage(file));
-  }
-
-  function handlePin(pin: PinterestPin) {
-    setPreview(pin.imageUrl);
-    void performMatch(() => matchReferenceImageUrl(pin.imageUrl));
   }
 
   function connectPinterest() {
@@ -133,6 +276,14 @@ function ReferencePage() {
   }
 
   const total = (result?.matchedItems.length ?? 0) + (result?.missingItems.length ?? 0);
+
+  // Curated cut-outs by default — same white-background domain as the wardrobe
+  // photos, so matching is like for like. Real pins take over once Pinterest is
+  // connected; the API's own stand-in feed is marked with "fb_" ids.
+  const realPins = pins.filter((p) => !p.id.startsWith("fb_"));
+  const outfitChoices = realPins.length
+    ? realPins.map((p) => ({ id: p.id, imageUrl: p.imageUrl, title: p.title ?? "Outfit" }))
+    : LOOKS.map((l) => ({ id: l.id, imageUrl: l.imageUrl, title: `${l.style} look` }));
 
   return (
     <div className="space-y-8">
@@ -145,12 +296,15 @@ function ReferencePage() {
         </p>
       </header>
 
-      {/* Inspiration feed — primary source */}
+      {/* Pick an outfit — curated cut-outs, or real pins once Pinterest is connected */}
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-primary">Inspiration</p>
             <h2 className="mt-1 text-2xl">Pick an outfit</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Tap a look to check it against your wardrobe.
+            </p>
           </div>
           <Button variant="ghost" size="sm" className="rounded-full" onClick={connectPinterest}>
             <Link2 className="size-4" />
@@ -159,30 +313,32 @@ function ReferencePage() {
         </div>
 
         {loadingPins ? (
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="aspect-[3/4] animate-pulse rounded-2xl bg-secondary/60" />
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} className="aspect-[3/5] animate-pulse rounded-2xl bg-secondary/60" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
-            {pins.map((pin) => {
-              const selected = preview === pin.imageUrl;
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+            {outfitChoices.map((choice) => {
+              const selected = preview === choice.imageUrl;
               return (
                 <button
-                  key={pin.id}
+                  key={choice.id}
                   type="button"
-                  onClick={() => handlePin(pin)}
+                  onClick={() => checkImage(choice.imageUrl)}
                   disabled={loading}
-                  className="group relative aspect-[3/4] overflow-hidden rounded-2xl bg-secondary/60 transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60"
+                  className="group relative aspect-[3/5] overflow-hidden rounded-2xl bg-white transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60"
                 >
                   <img
-                    src={pin.imageUrl}
-                    alt={pin.title ?? "Outfit"}
+                    src={choice.imageUrl}
+                    alt={choice.title}
                     loading="lazy"
-                    className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-[1.03]"
+                    className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.03]"
                   />
-                  {selected && <span className="absolute inset-0 ring-2 ring-inset ring-primary" />}
+                  {selected && (
+                    <span className="absolute inset-0 rounded-2xl ring-2 ring-inset ring-primary" />
+                  )}
                 </button>
               );
             })}
@@ -190,22 +346,32 @@ function ReferencePage() {
         )}
       </section>
 
-      {/* Upload — secondary source */}
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
-        <UploadZone
-          title="or upload your own"
-          subtitle="Screenshot, Pinterest save, or street style photo"
-          onFile={handleFile}
-          disabled={loading}
-        />
-        {preview && (
-          <img
-            src={preview}
-            alt="Reference outfit"
-            className="glass h-full max-h-72 w-full rounded-3xl object-cover p-1.5"
+      {/* Upload any clothes photo */}
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.25em] text-primary">Your own photo</p>
+          <h2 className="mt-1 text-2xl">Upload any clothes</h2>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            A whole outfit, a single garment, a shop photo or a screenshot. Styla reads whatever is
+            in the picture and looks for those pieces in your wardrobe.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
+          <UploadZone
+            title="Drop a clothes photo"
+            subtitle="Outfit or single garment · JPG or PNG"
+            onFile={handleFile}
+            disabled={loading}
           />
-        )}
-      </div>
+          {preview && (
+            <img
+              src={preview}
+              alt="Reference outfit"
+              className="glass h-full max-h-72 w-full rounded-3xl bg-white object-contain p-1.5"
+            />
+          )}
+        </div>
+      </section>
 
       {loading && (
         <AnalyzingCard
@@ -286,55 +452,25 @@ function ReferencePage() {
 
           {result.matchedItems.length > 0 ? (
             <section className="space-y-4">
-              <h2 className="text-2xl">In your wardrobe</h2>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl">In your wardrobe</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {result.matchedItems.length === 1
+                      ? "You already own this piece."
+                      : `You already own ${result.matchedItems.length} of these pieces.`}{" "}
+                    Tap one to see it full size.
+                  </p>
+                </div>
+                <Button asChild variant="outline" size="sm" className="rounded-full">
+                  <Link to="/">
+                    Open my wardrobe <ArrowRight className="size-3.5" />
+                  </Link>
+                </Button>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
                 {result.matchedItems.map((m, i) => (
-                  <div key={i} className="glass rounded-3xl p-4">
-                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                      <img
-                        src={m.referenceImageUrl || preview || ""}
-                        alt="Reference piece"
-                        className="aspect-[3/4] w-full rounded-2xl bg-white object-contain"
-                      />
-                      <ArrowRight className="size-4 text-primary" />
-                      <img
-                        src={m.wardrobeItem.thumbnailUrl ?? m.wardrobeItem.imageUrl}
-                        alt={categoryLabel(m.wardrobeItem.category)}
-                        className="aspect-[3/4] w-full rounded-2xl bg-white object-contain"
-                      />
-                    </div>
-                    <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{itemLabel(m.wardrobeItem)}</p>
-                        {m.detected && (
-                          <p className="truncate text-xs text-muted-foreground">
-                            Looking for: {describe(m.detected)}
-                          </p>
-                        )}
-                      </div>
-                      <span className="shrink-0 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-primary">
-                        {m.matchScore}% match
-                      </span>
-                    </div>
-                    {m.alternates && m.alternates.length > 0 && (
-                      <div className="mt-3 flex items-center gap-2">
-                        <span className="text-[11px] uppercase tracking-widest text-muted-foreground">
-                          Also close
-                        </span>
-                        {m.alternates.map((a) => (
-                          <div key={a.wardrobeItem.id} className="flex items-center gap-1.5">
-                            <img
-                              src={a.wardrobeItem.thumbnailUrl ?? a.wardrobeItem.imageUrl}
-                              alt={itemLabel(a.wardrobeItem)}
-                              title={itemLabel(a.wardrobeItem)}
-                              className="size-10 rounded-lg bg-white object-contain"
-                            />
-                            <span className="text-[11px] text-muted-foreground">{a.matchScore}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <MatchedCard key={i} match={m} preview={preview} />
                 ))}
               </div>
             </section>
@@ -356,12 +492,52 @@ function ReferencePage() {
               {result.missingItems.map((miss, i) => (
                 <div key={i} className="glass rounded-3xl p-4">
                   <div className="flex flex-wrap items-center gap-4">
-                    <img
-                      src={miss.referenceImageUrl || preview || ""}
-                      alt={categoryLabel(miss.category)}
-                      className="size-24 shrink-0 rounded-2xl bg-white object-contain"
-                    />
-                    <div className="min-w-0 flex-1">
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded-2xl bg-white p-1 transition hover:-translate-y-0.5 hover:shadow-md"
+                          title="See this piece bigger"
+                        >
+                          <img
+                            src={miss.referenceImageUrl || preview || ""}
+                            alt={categoryLabel(miss.category)}
+                            className="size-28 rounded-xl bg-white object-contain sm:size-40"
+                          />
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent className="max-h-[92vh] max-w-xl overflow-y-auto rounded-3xl">
+                        <DialogHeader>
+                          <DialogTitle className="font-display text-2xl">
+                            {miss.detected ? describe(miss.detected) : categoryLabel(miss.category)}
+                          </DialogTitle>
+                        </DialogHeader>
+                        <img
+                          src={miss.referenceImageUrl || preview || ""}
+                          alt={categoryLabel(miss.category)}
+                          className="max-h-[60vh] w-full rounded-2xl bg-white object-contain"
+                        />
+                        <p className="text-sm text-muted-foreground">
+                          This piece isn&apos;t in your wardrobe. The shops below sell the closest
+                          thing Styla could find.
+                        </p>
+                        {miss.googleShoppingUrl && (
+                          <Button
+                            className="rounded-full"
+                            onClick={() => openPage(miss.googleShoppingUrl!)}
+                          >
+                            Find it online <ExternalLink className="size-3.5" />
+                          </Button>
+                        )}
+                      </DialogContent>
+                    </Dialog>
+                    {/* A basis wide enough that the description keeps its own
+                        line rather than stacking a word at a time between the
+                        two pictures. */}
+                    <div className="min-w-0 flex-1 basis-56">
+                      <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                        Not in your wardrobe
+                      </p>
                       <p className="font-display text-xl">
                         {miss.detected ? describe(miss.detected) : categoryLabel(miss.category)}
                       </p>
@@ -375,7 +551,8 @@ function ReferencePage() {
                       <img
                         src={miss.closest.wardrobeItem.thumbnailUrl ?? miss.closest.wardrobeItem.imageUrl}
                         alt={itemLabel(miss.closest.wardrobeItem)}
-                        className="size-24 shrink-0 rounded-2xl bg-white object-contain opacity-70"
+                        title={`Closest you own: ${itemLabel(miss.closest.wardrobeItem)}`}
+                        className="size-28 shrink-0 rounded-2xl bg-white object-contain opacity-80 sm:size-40"
                       />
                     )}
                   </div>
