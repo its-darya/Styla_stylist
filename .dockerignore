@@ -1,0 +1,47 @@
+# The API image carries the Python code, the seeded wardrobe photos and
+# nothing else. Everything below is either rebuilt elsewhere, enormous, or
+# regenerated at runtime.
+
+# Frontend: deployed separately (Netlify)
+frontend/
+
+# Vendored try-on research code — the served pipeline calls hosted Spaces
+ml/vton/CatVTON/
+
+# Local environments and caches
+.git/
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+**/node_modules/
+
+# Secrets never enter the image; the host supplies them as variables
+.env
+.env.*
+!.env.example
+data/.jwt_secret
+
+# Regenerated at runtime
+data/vton/
+data/vton_test/
+data/reference/
+data/garments/
+data/cache/
+tmp/
+logs/
+scratchpad/
+
+# Pre-cut-out backups: only the served photos are needed
+data/images/original/
+
+# Local-only
+docker-compose.yml
+pgdata/
+wandb/
+*.log

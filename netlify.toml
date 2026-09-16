@@ -1,0 +1,21 @@
+# Netlify builds and serves the Styla website.
+#
+# The API is NOT deployed here: it loads FashionCLIP, Segformer and rembg,
+# which need gigabytes of memory and about a minute to start — far outside
+# what a serverless function can do. It runs as a container elsewhere (see
+# DEPLOY.md); point the site at it with VITE_API_URL.
+
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # The shared Vite config targets Cloudflare Workers by default; Nitro reads
+  # this to build for Netlify instead (static files in dist/, the server as a
+  # Netlify function).
+  NITRO_PRESET = "netlify"
+  NODE_VERSION = "22"
+  # VITE_API_URL is set in Site settings → Environment variables, so the API
+  # address is not committed. Without it the site calls http://localhost:8000
+  # and every request fails once deployed.

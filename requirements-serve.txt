@@ -1,0 +1,18 @@
+# Machine-learning dependencies the *running API* needs (used by Dockerfile).
+#
+# The root requirements.txt is the development set: it also carries wandb,
+# datasets, matplotlib, scikit-learn and albumentations, which only the
+# training and demo scripts import (ml/*/train.py, ml/retrieval/demo.py).
+# Leaving them out keeps the deployed image far smaller and quicker to build.
+#
+# torch and torchvision are installed separately from the CPU wheel index —
+# the default wheels drag in ~2 GB of CUDA that a CPU host never uses.
+
+transformers>=4.40
+huggingface_hub>=0.23
+pillow>=10.0
+numpy>=1.26
+# Headless build: same cv2 module, without the desktop GUI libraries.
+opencv-python-headless>=4.8.0
+scipy
+tqdm>=4.65.0
