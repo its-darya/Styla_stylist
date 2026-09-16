@@ -78,14 +78,21 @@ function DiscoverPage() {
     void navigate({ to: "/reference", search: { image: post.imageUrl } });
   }
 
-  /** Liking sends the look straight to Reference; unliking just forgets it. */
+  /**
+   * Favouriting only saves the look. Checking it against the wardrobe is a
+   * separate, deliberate step — saving something you like shouldn't drag you
+   * off the page.
+   */
   function toggleLike(post: DiscoverPost) {
     if (liked.includes(post.id)) {
       saveLiked(liked.filter((id) => id !== post.id));
+      toast("Removed from favourites");
       return;
     }
     saveLiked([...liked, post.id]);
-    checkInReference(post);
+    toast.success("Saved to favourites", {
+      action: { label: "Check it", onClick: () => checkInReference(post) },
+    });
   }
 
   function removeLook(post: DiscoverPost) {
@@ -109,8 +116,8 @@ function DiscoverPage() {
         <p className="text-xs uppercase tracking-[0.25em] text-primary">Inspiration</p>
         <h1 className="mt-4 text-4xl md:text-5xl font-display tracking-tight">Discover Styles</h1>
         <p className="mt-4 max-w-xl mx-auto text-muted-foreground text-base">
-          Tap a look to see it bigger, like it to check it against your wardrobe, or remove the ones
-          you don&apos;t want to see.
+          Tap a look to see it bigger, save the ones you like, and check any of them against your
+          wardrobe when you want to.
         </p>
       </header>
 
@@ -210,8 +217,8 @@ function DiscoverPage() {
               <button
                 type="button"
                 onClick={() => toggleLike(post)}
-                aria-label={isLiked ? "Remove like" : "Like and check in Reference"}
-                title={isLiked ? "Remove like" : "Like and check in Reference"}
+                aria-label={isLiked ? "Remove from favourites" : "Save to favourites"}
+                title={isLiked ? "Remove from favourites" : "Save to favourites"}
                 className="absolute right-2 top-2 grid size-8 place-items-center rounded-full bg-white/85 shadow-sm backdrop-blur transition hover:bg-white"
               >
                 <Heart
@@ -286,7 +293,7 @@ function DiscoverPage() {
                         liked.includes(zoomed.id) ? "fill-primary text-primary" : "",
                       )}
                     />
-                    {liked.includes(zoomed.id) ? "Liked" : "Like"}
+                    {liked.includes(zoomed.id) ? "Favourited" : "Favourite"}
                   </Button>
                   <Button className="rounded-full" onClick={() => checkInReference(zoomed)}>
                     Check in Reference
