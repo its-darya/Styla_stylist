@@ -306,10 +306,7 @@ function ReferencePage() {
               Tap a look to check it against your wardrobe.
             </p>
           </div>
-          <Button variant="ghost" size="sm" className="rounded-full" onClick={connectPinterest}>
-            <Link2 className="size-4" />
-            Connect Pinterest
-          </Button>
+
         </div>
 
         {loadingPins ? (
